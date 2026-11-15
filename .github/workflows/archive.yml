@@ -29,6 +29,7 @@ jobs:
           python-version: '3.11'
       - run: python archive.py data-branch/data
       - run: python score.py data-branch/data
+      - run: python site.py data-branch/data
       - name: Commit new files
         working-directory: data-branch
         run: |
