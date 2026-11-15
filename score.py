@@ -1,6 +1,7 @@
-"""Score the archived HEFS reservoir-inflow ensembles against CDEC observed daily inflow (sensor 76),
-with persistence and day-of-year climatology as baselines. Every scored forecast day is one row of
-the ledger; the pooled table is printed.
+"""Score the archived reservoir-inflow forecasts against CDEC observed daily inflow (sensor 76), with
+persistence and day-of-year climatology as baselines. Products: the HEFS ensemble (data/hefs_daily) and any
+model under data/forecasts/<model>/<lid>/<issue date>.csv (date,lead,q05,...), scored as an ensemble of its
+quantiles. Every scored forecast day is one row of the ledger; the pooled table is printed.
 
 Run: python score.py [out_dir]   (default: data/)
      writes out/cdec_inflow/<station>.csv (date,cfs; full record, refreshed every run because CDEC
@@ -62,6 +63,24 @@ def read_hefs(path: Path) -> dict[date, list[float]]:
     return rows
 
 
+def read_quantiles(path: Path) -> dict[date, list[float]]:
+    """{day: quantile values in cfs} from a model forecast CSV (date, lead, q05, q25, ...)."""
+    with path.open() as f:
+        rows = list(csv.reader(f))
+    return {date.fromisoformat(r[0]): [float(x) for x in r[2:]] for r in rows[1:]}
+
+
+def forecasts(out: Path, lid: str) -> list[tuple[str, date, dict[date, list[float]]]]:
+    """(product, issue day, {day: members}) for every archived forecast of lid; one per product and issue day."""
+    latest = {}  # the newest archived HEFS file per issue day wins
+    for p in sorted((out / "hefs_daily" / lid).glob("*.gz")):
+        fc = read_hefs(p)
+        latest[("hefs", min(fc))] = fc
+    for p in sorted((out / "forecasts").glob(f"*/{lid}/*.csv")):
+        latest[(p.parent.parent.name, date.fromisoformat(p.stem))] = read_quantiles(p)
+    return [(product, issue, fc) for (product, issue), fc in latest.items()]
+
+
 def crps(members: list[float], y: float) -> float:
     """Fair ensemble CRPS (Hersbach 2000): E|X-y| - 0.5 E|X-X'| with the n/(n-1) correction.
     E|X-X'| over all n^2 pairs is computed from the sorted members in O(n)."""
@@ -82,11 +101,7 @@ def score(out: Path) -> list[dict]:
         for d, v in obs.items():
             if v >= 0:
                 by_doy[(d.month, d.day)].append((d.year, v))
-        latest = {}  # one forecast per issue day: the newest archived file wins
-        for p in sorted((out / "hefs_daily" / lid).glob("*.gz")):
-            fc = read_hefs(p)
-            latest[min(fc)] = fc
-        for issue, fc in latest.items():
+        for product, issue, fc in forecasts(out, lid):
             last = obs.get(issue - timedelta(days=1))  # the newest complete day when the run was issued
             for lead in LEADS:
                 day = issue + timedelta(days=lead)
@@ -96,11 +111,11 @@ def score(out: Path) -> list[dict]:
                     continue
                 m = sorted(fc[day])
                 rows.append({
-                    "lid": lid, "issue": issue, "lead": lead, "obs_cfs": y,
-                    "crps_hefs": round(crps(m, y), 1),
+                    "product": product, "lid": lid, "issue": issue, "lead": lead, "obs_cfs": y,
+                    "crps": round(crps(m, y), 1),
                     "crps_persistence": round(abs(last - y), 1),
                     "crps_climatology": round(crps(clim, y), 1),
-                    "in90_hefs": int(m[round(0.05 * (len(m) - 1))] <= y <= m[round(0.95 * (len(m) - 1))]),
+                    "in90": int(m[round(0.05 * (len(m) - 1))] <= y <= m[round(0.95 * (len(m) - 1))]),
                 })
     return rows
 
@@ -111,19 +126,20 @@ def main(out: Path) -> int:
     rows = score(out)
     path = out / "scores" / "inflow_daily.csv"
     path.parent.mkdir(parents=True, exist_ok=True)
-    cols = ["lid", "issue", "lead", "obs_cfs", "crps_hefs", "crps_persistence", "crps_climatology", "in90_hefs"]
+    cols = ["product", "lid", "issue", "lead", "obs_cfs", "crps", "crps_persistence", "crps_climatology", "in90"]
     with path.open("w", newline="") as f:
         w = csv.DictWriter(f, cols)
         w.writeheader()
         w.writerows(rows)
     print(f"{now:%Y-%m-%dT%H:%MZ} scored {len(rows)} forecast-days, {failed} stations failed")
-    print("lead     n  crps_hefs  crps_pers  crps_clim  cov90")
-    for lead in LEADS:
-        r = [x for x in rows if x["lead"] == lead]
-        if r:
-            mean = lambda k: sum(x[k] for x in r) / len(r)
-            print(f"{lead:4d} {len(r):5d} {mean('crps_hefs'):10.0f} {mean('crps_persistence'):10.0f} "
-                  f"{mean('crps_climatology'):10.0f} {mean('in90_hefs'):6.2f}")
+    print("product                 lead     n  crps  crps_pers  crps_clim  cov90")
+    for product in sorted({x["product"] for x in rows}):
+        for lead in LEADS:
+            r = [x for x in rows if x["lead"] == lead and x["product"] == product]
+            if r:
+                mean = lambda k: sum(x[k] for x in r) / len(r)
+                print(f"{product:22s} {lead:4d} {len(r):5d} {mean('crps'):5.0f} {mean('crps_persistence'):10.0f} "
+                      f"{mean('crps_climatology'):10.0f} {mean('in90'):6.2f}")
     return 1 if failed > len(SCORED) // 2 else 0
 
 

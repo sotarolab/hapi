@@ -11,7 +11,9 @@ Step 2: `score.py` fetches observed daily reservoir inflow from CDEC (sensor 76)
 clean records and scores every archived HEFS daily ensemble at leads 1-14 days: fair CRPS, 90% coverage,
 and the CRPS of two baselines, persistence (last observed day) and day-of-year climatology (all prior
 years as an ensemble). One row per forecast-day in `data/scores/inflow_daily.csv`; the pooled table
-is printed. Flood gauges are archived but not yet scored.
+is printed. Model forecasts dropped under `data/forecasts/<model>/<point>/<issue date>.csv` (columns
+`date,lead,q05,...`) are scored the same way, as an ensemble of their quantiles. Flood gauges are archived
+but not yet scored.
 
     python archive.py          # writes data/<product>/<point>/<UTC time>.gz, skipping unchanged files
     python score.py            # refreshes data/cdec_inflow/<station>.csv, writes data/scores/inflow_daily.csv
