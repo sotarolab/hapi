@@ -1,0 +1,38 @@
+name: Archive official forecasts
+
+# The ensemble files are live-only: a run not captured is gone. Every 6 hours at :37 (off the
+# congested :00). Data is committed to the `data` branch so `main` stays code-only.
+on:
+  schedule:
+    - cron: '37 */6 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: archive
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: data-branch
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python archive.py data-branch/data
+      - name: Commit new files
+        working-directory: data-branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || git commit -q -m "archive $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
