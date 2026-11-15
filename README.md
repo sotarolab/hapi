@@ -16,6 +16,7 @@ is printed. Flood gauges are archived but not yet scored.
     python archive.py          # writes data/<product>/<point>/<UTC time>.gz, skipping unchanged files
     python score.py            # refreshes data/cdec_inflow/<station>.csv, writes data/scores/inflow_daily.csv
     python -m pytest tests
+    jupyter lab notebooks/ledger.ipynb   # observed inflow with the newest HEFS fan per reservoir, and the score table
 
 One-time setup after creating the GitHub repo: push `main`, then create an empty `data` branch
 (`git switch --orphan data && git commit --allow-empty -m "data" && git push -u origin data`).
