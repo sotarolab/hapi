@@ -15,10 +15,13 @@ is printed. Model forecasts dropped under `data/forecasts/<model>/<point>/<issue
 `date,lead,q05,...`) are scored the same way, as an ensemble of their quantiles. Flood gauges are archived
 but not yet scored.
 
+First model product: `quantile_inflow_v1_s0`, a regional quantile LSTM on Open-Meteo forcing from the
+private `embalse` package, issuing 14-day forecasts for the 11 reservoirs since 2026-11-15. Its retrospective
+skill on water years 2016-2025 is in that package; the live score is this ledger.
+
     python archive.py          # writes data/<product>/<point>/<UTC time>.gz, skipping unchanged files
     python score.py            # refreshes data/cdec_inflow/<station>.csv, writes data/scores/inflow_daily.csv
     python -m pytest tests
     jupyter lab notebooks/ledger.ipynb   # observed inflow with the newest HEFS fan per reservoir, and the score table
 
-One-time setup after creating the GitHub repo: push `main`, then create an empty `data` branch
-(`git switch --orphan data && git commit --allow-empty -m "data" && git push -u origin data`).
+The archive and scores live on the `data` branch (github.com/sotarolab/inflow-ledger/tree/data).
