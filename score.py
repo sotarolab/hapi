@@ -1,0 +1,131 @@
+"""Score the archived HEFS reservoir-inflow ensembles against CDEC observed daily inflow (sensor 76),
+with persistence and day-of-year climatology as baselines. Every scored forecast day is one row of
+the ledger; the pooled table is printed.
+
+Run: python score.py [out_dir]   (default: data/)
+     writes out/cdec_inflow/<station>.csv (date,cfs; full record, refreshed every run because CDEC
+     revises values) and out/scores/inflow_daily.csv
+"""
+
+from __future__ import annotations
+
+import csv
+import gzip
+import sys
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+
+from archive import INFLOW, fetch
+
+NOISY = {"WSDC1", "NDPC1", "CEGC1", "INVC1"}  # archived, not scored: negative computed inflows at low flow
+SCORED = {lid: sta for lid, sta in INFLOW.items() if sta and lid not in NOISY}
+CDEC = ("https://cdec.water.ca.gov/dynamicapp/req/CSVDataServlet?Stations={sta}&SensorNums=76"
+        "&dur_code=D&Start=1980-10-01&End={end:%Y-%m-%d}")
+LEADS = range(1, 15)
+MIN_CLIM_YEARS = 10
+
+
+def update_obs(out: Path, now: datetime) -> int:
+    """Rewrite out/cdec_inflow/<sta>.csv from CDEC. Returns the number of stations that failed."""
+    d = out / "cdec_inflow"
+    d.mkdir(parents=True, exist_ok=True)
+    failed = 0
+    for sta in filter(None, INFLOW.values()):
+        body = fetch(CDEC.format(sta=sta, end=now))
+        if body is None or not body.startswith(b"STATION_ID"):
+            failed += 1
+            print(f"BAD PAYLOAD cdec {sta}", file=sys.stderr)
+            continue
+        rows = csv.DictReader(body.decode().splitlines())
+        with (d / f"{sta}.csv").open("w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["date", "cfs"])
+            for r in rows:
+                if r["VALUE"] != "---":  # CDEC's missing marker
+                    t = r["DATE TIME"]
+                    w.writerow([f"{t[:4]}-{t[4:6]}-{t[6:8]}", r["VALUE"]])
+    return failed
+
+
+def read_obs(path: Path) -> dict[date, float]:
+    with path.open() as f:
+        return {date.fromisoformat(d): float(v) for d, v in list(csv.reader(f))[1:]}
+
+
+def read_hefs(path: Path) -> dict[date, list[float]]:
+    """{day: members in cfs}. The first day is the issue day (all members equal the analysis)."""
+    rows = {}
+    for line in gzip.decompress(path.read_bytes()).decode().splitlines()[2:]:  # 2 header rows
+        f = line.split(",")
+        rows[date.fromisoformat(f[0][:10])] = [float(x) * 1000 for x in f[1:] if x]  # kcfs -> cfs
+    return rows
+
+
+def crps(members: list[float], y: float) -> float:
+    """Fair ensemble CRPS (Hersbach 2000): E|X-y| - 0.5 E|X-X'| with the n/(n-1) correction.
+    E|X-X'| over all n^2 pairs is computed from the sorted members in O(n)."""
+    xs = sorted(members)
+    n = len(xs)
+    spread = 2 * sum((2 * i - n - 1) * x for i, x in enumerate(xs, 1)) / (n * n)
+    return sum(abs(x - y) for x in xs) / n - 0.5 * spread * n / max(n - 1, 1)
+
+
+def score(out: Path) -> list[dict]:
+    rows = []
+    for lid, sta in SCORED.items():
+        obs_path = out / "cdec_inflow" / f"{sta}.csv"
+        if not obs_path.exists():
+            continue
+        obs = read_obs(obs_path)
+        by_doy = defaultdict(list)
+        for d, v in obs.items():
+            if v >= 0:
+                by_doy[(d.month, d.day)].append((d.year, v))
+        latest = {}  # one forecast per issue day: the newest archived file wins
+        for p in sorted((out / "hefs_daily" / lid).glob("*.gz")):
+            fc = read_hefs(p)
+            latest[min(fc)] = fc
+        for issue, fc in latest.items():
+            last = obs.get(issue - timedelta(days=1))  # the newest complete day when the run was issued
+            for lead in LEADS:
+                day = issue + timedelta(days=lead)
+                y = obs.get(day)
+                clim = [v for yr, v in by_doy[(day.month, day.day)] if yr < issue.year]
+                if y is None or y < 0 or last is None or last < 0 or day not in fc or len(clim) < MIN_CLIM_YEARS:
+                    continue
+                m = sorted(fc[day])
+                rows.append({
+                    "lid": lid, "issue": issue, "lead": lead, "obs_cfs": y,
+                    "crps_hefs": round(crps(m, y), 1),
+                    "crps_persistence": round(abs(last - y), 1),
+                    "crps_climatology": round(crps(clim, y), 1),
+                    "in90_hefs": int(m[round(0.05 * (len(m) - 1))] <= y <= m[round(0.95 * (len(m) - 1))]),
+                })
+    return rows
+
+
+def main(out: Path) -> int:
+    now = datetime.now(timezone.utc)
+    failed = update_obs(out, now)
+    rows = score(out)
+    path = out / "scores" / "inflow_daily.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cols = ["lid", "issue", "lead", "obs_cfs", "crps_hefs", "crps_persistence", "crps_climatology", "in90_hefs"]
+    with path.open("w", newline="") as f:
+        w = csv.DictWriter(f, cols)
+        w.writeheader()
+        w.writerows(rows)
+    print(f"{now:%Y-%m-%dT%H:%MZ} scored {len(rows)} forecast-days, {failed} stations failed")
+    print("lead     n  crps_hefs  crps_pers  crps_clim  cov90")
+    for lead in LEADS:
+        r = [x for x in rows if x["lead"] == lead]
+        if r:
+            mean = lambda k: sum(x[k] for x in r) / len(r)
+            print(f"{lead:4d} {len(r):5d} {mean('crps_hefs'):10.0f} {mean('crps_persistence'):10.0f} "
+                  f"{mean('crps_climatology'):10.0f} {mean('in90_hefs'):6.2f}")
+    return 1 if failed > len(SCORED) // 2 else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(Path(sys.argv[1] if len(sys.argv) > 1 else "data")))
