@@ -1,4 +1,4 @@
-# inflow-ledger (working name)
+# inflow-ledger
 
 A public, timestamped record of river-flow and reservoir-inflow forecasts for California,
 scored against the official forecasts.
