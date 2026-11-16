@@ -29,6 +29,8 @@ jobs:
           python-version: '3.11'
       - run: python archive.py data-branch/data
       - run: python weather.py data-branch/data
+        timeout-minutes: 5  # a stalled Open-Meteo hour loses the weather, not the archive, flow and site below
+        continue-on-error: true
       - run: python score.py data-branch/data
       - run: python live.py data-branch/data
       - run: python site.py data-branch/data

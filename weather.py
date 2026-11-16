@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import math
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from archive import fetch, save
@@ -22,6 +22,7 @@ IVT_MODEL = "gfs_seamless"  # the only one Open-Meteo serves with every level be
 LEVELS = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300]  # hPa, surface upward
 LEVEL_VARS = ["wind_speed", "wind_direction", "relative_humidity", "temperature"]
 GRAVITY = 9.81
+FRESH_HOURS = 5  # Open-Meteo refreshes each 6 h cycle; the archive job runs hourly for the observed flow
 
 API = "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&forecast_days=7&timezone=UTC"
 SURFACE = API + "&hourly=precipitation,freezing_level_height&models=" + ",".join(MODELS)
@@ -60,11 +61,20 @@ def derive(surface: dict, profile: dict) -> dict:
             "ivt": [None if v is None else round(v) for v in values]}
 
 
+def fresh(out: Path, lid: str, now: datetime) -> bool:
+    """True when the point's newest archived forecast is under FRESH_HOURS old (the stem is its UTC fetch time)."""
+    files = sorted((out / "weather" / lid).glob("*.gz")) if (out / "weather" / lid).is_dir() else []
+    return bool(files) and now - datetime.strptime(files[-1].stem, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc) < timedelta(hours=FRESH_HOURS)
+
+
 def main(out: Path) -> int:
     now = datetime.now(timezone.utc)
-    saved = failed = 0
+    saved = failed = skipped = 0
     points = {lid: v[1:3] for lid, v in {**RESERVOIRS, **GAUGES}.items()}
     for lid, (lat, lon) in points.items():
+        if fresh(out, lid, now):
+            skipped += 1
+            continue
         bodies = [fetch(url.format(lat=lat, lon=lon)) for url in (SURFACE, PROFILE)]
         try:
             body = json.dumps(derive(*(json.loads(b) for b in bodies))).encode()
@@ -73,7 +83,7 @@ def main(out: Path) -> int:
             print(f"BAD PAYLOAD {lid} weather: {e!r}", file=sys.stderr)
             continue
         saved += save(out, lid, "weather", body, now) is not None
-    print(f"{now:%Y-%m-%dT%H:%MZ} weather: saved {saved} new, {failed} failed, of {len(points)}")
+    print(f"{now:%Y-%m-%dT%H:%MZ} weather: saved {saved} new, {failed} failed, {skipped} still fresh, of {len(points)}")
     return 0  # the page shows no weather panel for a point without a file; never block the official archive
 
 
