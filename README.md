@@ -1,5 +1,7 @@
 # hapi
 
+Live at https://sotarolab.github.io/hapi/. How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 A public, timestamped record of river-flow and reservoir-inflow forecasts for California,
 scored against the official forecasts.
 
