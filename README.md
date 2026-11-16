@@ -25,7 +25,7 @@ skill on water years 2016-2025 is in that package; the live score is this ledger
     python -m pytest tests
     jupyter lab notebooks/ledger.ipynb   # observed inflow with the newest HEFS fan per reservoir, and the score table
 
-Weather: `weather.py` runs with the archive and saves the forecast at every point from Open-Meteo: hourly
+Weather: `weather.py` runs with the archive, refetching a point once its newest file is 5 hours old, and saves the forecast at every point from Open-Meteo: hourly
 precipitation and freezing level from GFS, ECMWF IFS, ICON and NBM, and integrated vapor transport (IVT)
 computed from GFS winds and humidity on pressure levels. `ar_scale.py` grades the IVT on the atmospheric river
 scale of Ralph et al. (2019).

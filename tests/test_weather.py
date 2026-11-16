@@ -38,3 +38,13 @@ def test_derive_keeps_models_with_values_and_computes_ivt():
 def test_urls_name_every_level_and_model():
     assert weather.PROFILE.count("hPa") == len(weather.LEVELS) * len(weather.LEVEL_VARS)
     assert all(m in weather.SURFACE for m in weather.MODELS) and "{lat}" in weather.SURFACE
+
+
+def test_fresh_within_five_hours_of_the_newest_file(tmp_path):
+    from datetime import datetime, timezone
+    d = tmp_path / "weather" / "FOLC1"
+    d.mkdir(parents=True)
+    (d / "20261116T043700Z.gz").write_bytes(b"")
+    assert weather.fresh(tmp_path, "FOLC1", datetime(2026, 11, 16, 9, 0, tzinfo=timezone.utc))
+    assert not weather.fresh(tmp_path, "FOLC1", datetime(2026, 11, 16, 9, 40, tzinfo=timezone.utc))
+    assert not weather.fresh(tmp_path, "GUEC1", datetime(2026, 11, 16, 9, 0, tzinfo=timezone.utc))
