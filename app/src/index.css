@@ -49,6 +49,11 @@ header.top .sub { font-size: 12px; color: var(--dim); }
 .tile { display: flex; flex-direction: column; gap: 4px; background: var(--panel); border: 1px solid var(--rule); padding: 10px 12px; }
 .tile b { font-size: 20px; }
 .tile .note { margin: 0; font-size: 11px; }
+.tiles.wide { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.tile.flag--warn { border-color: var(--warn); }
+.tile.flag--danger { border-color: var(--danger); }
+.tile.flag--warn b { color: var(--warn); }
+.tile.flag--danger b { color: var(--danger); }
 table.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.grid th { font: 600 11px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); text-align: left; padding: 6px 10px 7px 0; border-bottom: 1px solid var(--faint); white-space: nowrap; }
 table.grid td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--rule); vertical-align: baseline; }
@@ -70,6 +75,13 @@ table.grid td.pick:hover { text-decoration: underline; }
 .map .leaflet-control-zoom a { background: var(--panel2); color: var(--ink); border-color: var(--rule); }
 .map .leaflet-control-attribution { background: rgba(15, 17, 20, .7); color: var(--faint); font: 9px var(--sans); }
 .map .leaflet-control-attribution a { color: var(--dim); }
+.map .leaflet-control-layers { background: var(--panel2); color: var(--ink); border: 1px solid var(--rule); border-radius: 0; box-shadow: none; font: 11px var(--mono); }
+.map .leaflet-control-layers-expanded { padding: 6px 8px; }
+.map .leaflet-control-layers label { display: flex; align-items: center; margin: 2px 0; white-space: nowrap; cursor: pointer; }
+.map .leaflet-control-layers label > span { display: inline-flex; align-items: center; gap: 6px; }
+.map .leaflet-control-layers-selector { margin: 0; accent-color: var(--hot); }
+.sat { background: #000; border: 1px solid var(--rule); display: flex; justify-content: center; }
+.sat img { max-width: 100%; height: auto; display: block; }
 .pill { display: inline-block; font: 600 10px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; padding: 3px 6px; border: 1px solid var(--rule); color: var(--dim); }
 .pill.warn { color: var(--warn); border-color: var(--warn); }
 footer { padding: 16px 14px; font: 11px/1.5 var(--sans); color: var(--faint); }

@@ -3,6 +3,8 @@ import { api, type PointData } from './api'
 import { LabPane } from './components/LabPane'
 import { MODEL_VARS, PointChart } from './components/PointChart'
 import { PointMap } from './components/PointMap'
+import { SatellitePane } from './components/SatellitePane'
+import { WeatherPane } from './components/WeatherPane'
 import { useFetch } from './hooks/useFetch'
 import { dayLabel, fmtFlow, recordDay } from './lib/skill'
 
@@ -29,6 +31,7 @@ export default function App() {
   const points = index.data?.points ?? []
   const current = lid ?? points.find((p) => p.scored)?.lid ?? null
   const point = useFetch((s) => (current ? api.point(current, s) : Promise.resolve(null)), [current], tick)
+  const here = points.find((p) => p.lid === current)
   const pick = (p: string) => setView({ tab: 'forecast', lid: p })
   const day = recordDay(index.data?.record_start ?? null)
   return (
@@ -38,7 +41,7 @@ export default function App() {
         <span className="stamp"><i className={`live${index.error ? ' stale' : ''}`} />{index.data ? `day ${day} · built ${index.data.built.slice(0, 16)}Z` : index.error ? `data: ${index.error}` : 'loading'}</span>
       </header>
       <nav className="tabs">{TABS.map((t) => <button key={t.id} className={`tab${t.id === tab ? ' active' : ''}`} onClick={() => setView({ tab: t.id, lid })}>{t.label}</button>)}</nav>
-      {tab === 'forecast' && (
+      {tab === 'forecast' && (<>
         <section className="panel">
           <div className="panel-h">
             <h2>Points</h2>
@@ -50,16 +53,19 @@ export default function App() {
             </label>
           </div>
           <div className="pgrid">
-            <PointMap points={points} selected={current} onSelect={pick} />
+            <PointMap points={points} selected={current} onSelect={pick} tick={tick} />
             {point.data ? <PointCard point={point.data} /> : <p className="note">{point.error ?? 'Loading…'}</p>}
           </div>
         </section>
-      )}
+        {point.data && <WeatherPane point={point.data} />}
+        {here && <SatellitePane point={here} />}
+      </>)}
       {tab === 'lab' && (index.data ? <LabPane index={index.data} onPick={pick} /> : <section className="panel"><p className="note">{index.error ?? 'Loading…'}</p></section>)}
       <footer>
         Archive, observations, forecasts and scores: the <a href="https://github.com/sotarolab/hapi/tree/data">data branch</a> of
         <a href="https://github.com/sotarolab/hapi"> hapi</a>. Official products from CNRFC (HEFS) and NWS (NWPS); observed inflow from CDEC.
-        Models are issued before the outcome exists and never revised.
+        Models are issued before the outcome exists and never revised. Weather forecasts from <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0);
+        satellite loops from NOAA STAR, radar from the NWS and the Iowa Environmental Mesonet.
       </footer>
     </div>
   )

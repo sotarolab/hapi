@@ -4,10 +4,10 @@ import 'uplot/dist/uPlot.min.css'
 import type { PointData } from '../api'
 import { fmtFlow } from '../lib/skill'
 
-const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+export const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 /** Models take these hues in the order they appear; HEFS is always the blue. */
 export const MODEL_VARS = ['--ml', '--warn', '--danger', '--cool']
-const rgba = (hex: string, a: number) => {
+export const rgba = (hex: string, a: number) => {
   const n = parseInt(hex.slice(1), 16)
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
 }
