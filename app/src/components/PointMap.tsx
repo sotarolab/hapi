@@ -36,7 +36,7 @@ function refresh(layer: Overlay) {
 /** Every point on one map: reservoirs in blue, flood gauges in orange, the selected one ringed in white.
  *  A click selects; the view is fitted once to the whole set and then left alone. Radar and satellite
  *  overlays can be switched on from the top right corner and advance with the app's refresh (`tick`). */
-export function PointMap({ points, selected, onSelect, tick = 0, height = 460 }: { points: Point[]; selected: string | null; onSelect: (lid: string) => void; tick?: number; height?: number }) {
+export function PointMap({ points, selected, onSelect, tick = 0, height = 560 }: { points: Point[]; selected: string | null; onSelect: (lid: string) => void; tick?: number; height?: number }) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<L.Map | null>(null)
   const markers = useRef<Map<string, L.CircleMarker>>(new Map())
@@ -46,12 +46,12 @@ export function PointMap({ points, selected, onSelect, tick = 0, height = 460 }:
 
   useEffect(() => {
     if (!el.current || map.current) return
-    const m = L.map(el.current, { zoomControl: true, attributionControl: true, scrollWheelZoom: false })
+    const m = L.map(el.current, { zoomControl: true, attributionControl: true, scrollWheelZoom: false, zoomSnap: 0.25 })
     // OpenStreetMap's own tiles, darkened by CSS (.map .leaflet-tile-pane): the dark basemaps now need keys.
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 12 }).addTo(m)
     m.createPane('wx').style.zIndex = '350'  // above the basemap tiles (200), below the markers (400)
     overlays.current = weatherOverlays()
-    L.control.layers(undefined, overlays.current, { collapsed: false, position: 'topright' }).addTo(m)
+    L.control.layers(undefined, overlays.current, { collapsed: true, position: 'topright' }).addTo(m)
     map.current = m
     return () => { m.remove(); map.current = null; overlays.current = null }
   }, [])
@@ -73,7 +73,8 @@ export function PointMap({ points, selected, onSelect, tick = 0, height = 460 }:
       markers.current.set(p.lid, mk)
       bounds.push([p.lat, p.lon])
     }
-    if (bounds.length) m.fitBounds(bounds, { padding: [24, 24] })
+    // California itself, not the point set: the points cluster north and the state's shape reads better.
+    if (bounds.length) m.fitBounds([[32.5, -124.5], [42.1, -114.1]], { padding: [8, 8] })
   }, [points])
 
   useEffect(() => {

@@ -11,11 +11,14 @@ export interface Point {
   cdec?: string | null
   usgs?: string
   scored: boolean
-  flood_stages_ft?: [number, number, number] | null
   note?: string | null
 }
 export interface Fan { issued: string; dates: string[]; p05: number[]; p25: number[]; p50: number[]; p75: number[]; p95: number[] }
 export interface ModelFan { issued: string; dates: string[]; q05: number[]; q25: number[]; q50: number[]; q75: number[]; q95: number[] }
+/** The week's hourly observed flow live.py fetched; stage only at the gauges. */
+export interface Live { source: string; times: string[]; cfs: (number | null)[]; stage_ft: (number | null)[] | null }
+/** An NWS flood category of a gauge; cfs is null where the rating curve does not reach the stage. */
+export interface Alert { label: string; ft: number; cfs: number | null }
 export interface Official { issued: string | null; times: string[]; stage_ft: (number | null)[]; flow_cfs: (number | null)[] }
 /** The weather panel as site.py wrote it, ready to draw: every label, unit and colour (a CSS token name) is data. */
 export interface WeatherTile { label: string; value: string; note: string; flag: 'warn' | 'danger' | null }
@@ -39,6 +42,8 @@ export interface PointData extends Point {
   official: Official | null
   /** Absent in files built before weather.py existed, null when nothing is archived for the point. */
   weather?: Weather | null
+  live?: Live | null
+  alerts?: Alert[]
 }
 export interface Cell {
   product: string

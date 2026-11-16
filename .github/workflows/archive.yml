@@ -1,10 +1,10 @@
 name: Archive official forecasts
 
-# The ensemble files are live-only: a run not captured is gone. Every 6 hours at :37 (off the
-# congested :00). Data is committed to the `data` branch so `main` stays code-only.
+# The ensemble files are live-only: a run not captured is gone. Hourly at :37 (off the congested :00),
+# so the hourly observed flow stays within the hour. Data is committed to the `data` branch so `main` stays code-only.
 on:
   schedule:
-    - cron: '37 */6 * * *'
+    - cron: '37 * * * *'
   workflow_dispatch: {}
 
 concurrency:
@@ -30,6 +30,7 @@ jobs:
       - run: python archive.py data-branch/data
       - run: python weather.py data-branch/data
       - run: python score.py data-branch/data
+      - run: python live.py data-branch/data
       - run: python site.py data-branch/data
       - name: Commit new files
         working-directory: data-branch

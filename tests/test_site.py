@@ -21,7 +21,14 @@ def test_build_writes_index_and_point_files(tmp_path):
     assert fol["models"]["embalse_v1"]["q50"] == [1000, 600] and fol["obs"][-1] == ["2026-11-15", 1000.0]
     assert site.percentiles([3, 1, 2]) == [1, 1, 2, 3, 3]
     guec = json.loads((tmp_path / "site" / "points" / "GUEC1.json").read_text())
-    assert guec["hefs"] is None and guec["official"] is None and guec["flood_stages_ft"] == [32, 35, 40]
+    assert guec["hefs"] is None and guec["official"] is None and guec["live"] is None and guec["alerts"] == []
+    assert fol["live"] is None and fol["alerts"] == []
+    (tmp_path / "live").mkdir()
+    (tmp_path / "live" / "GUEC1.json").write_text(json.dumps({"source": "NWS observed at GUEC1", "times": ["2026-11-15T00:00:00Z"],
+                                                              "cfs": [204], "stage_ft": [4.5], "alerts": [{"label": "Action", "ft": 29, "cfs": 37700}]}))
+    site.build(tmp_path, datetime(2026, 11, 15, tzinfo=timezone.utc))
+    guec = json.loads((tmp_path / "site" / "points" / "GUEC1.json").read_text())
+    assert guec["live"]["cfs"] == [204] and "alerts" not in guec["live"] and guec["alerts"][0]["cfs"] == 37700
     assert fol["weather"] is None and guec["weather"] is None  # nothing archived by weather.py
 
 

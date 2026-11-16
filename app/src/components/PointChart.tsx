@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
-import type { PointData } from '../api'
+import type { Alert, PointData } from '../api'
 import { fmtFlow } from '../lib/skill'
 
 export const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -15,8 +15,24 @@ const noon = (iso: string) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +
 
 interface Entry { idx: number; label: string; colour: string }
 
-/** Observed daily flow, the HEFS fan (5-95 and 25-75 with its median), each model's fan the same way,
- *  and the NWS official hourly forecast as a dashed line. Hovering reads the lines at the cursor. */
+const hourLabel = (t: string) => new Date(t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', timeZone: 'UTC' })
+/** The newest hourly value of the live series, with its hour. */
+export function latest(live: { times: string[]; cfs: (number | null)[] }): { when: string; cfs: number } | null {
+  for (let i = live.cfs.length - 1; i >= 0; i--) if (live.cfs[i] != null) return { when: `${hourLabel(live.times[i])} UTC`, cfs: live.cfs[i]! }
+  return null
+}
+/** Where a flow sits among the NWS flood categories: "above minor", "below action". */
+export function category(cfs: number | null, alerts: Alert[]): string | null {
+  const known = alerts.filter((a) => a.cfs != null)
+  if (cfs == null || !known.length) return null
+  const reached = known.filter((a) => cfs >= a.cfs!).at(-1)
+  return reached ? `above ${reached.label.toLowerCase()}` : `below ${known[0].label.toLowerCase()}`
+}
+const alertColour = (a: Alert) => css(a.label === 'Action' || a.label === 'Minor' ? '--warn' : '--danger')
+
+/** Observed daily flow with the week's hourly values, the HEFS fan (5-95 and 25-75 with its median), each
+ *  model's fan the same way, the NWS official hourly forecast as a dashed line and the NWS flood categories
+ *  as dashed levels. Hovering reads the lines at the cursor. */
 export function PointChart({ point, log, height = 360 }: { point: PointData; log: boolean; height?: number }) {
   const el = useRef<HTMLDivElement>(null)
   const tip = useRef<HTMLDivElement>(null)
@@ -29,6 +45,7 @@ export function PointChart({ point, log, height = 360 }: { point: PointData; log
     point.hefs?.dates.forEach((d) => xs.add(noon(d)))
     Object.values(point.models).forEach((m) => m.dates.forEach((d) => xs.add(noon(d))))
     point.official?.times.forEach((t) => xs.add(Date.parse(t) / 1000))
+    point.live?.times.forEach((t) => xs.add(Date.parse(t) / 1000))
     const x = [...xs].sort((a, b) => a - b)
     const at = new Map(x.map((v, i) => [v, i]))
     const col = () => new Array<number | null>(x.length).fill(null)
@@ -42,6 +59,14 @@ export function PointChart({ point, log, height = 360 }: { point: PointData; log
     const series: uPlot.Series[] = [{}, { label: 'Observed', stroke: css('--obs'), width: 2, spanGaps: true, points: { show: false } }]
     const bands: uPlot.Band[] = []
     const entries: Entry[] = [{ idx: 1, label: 'Observed (CDEC)', colour: css('--obs') }]
+    if (point.live) {
+      const hourly = col()
+      point.live.times.forEach((t, k) => put(hourly, Date.parse(t) / 1000, point.live!.cfs[k]))
+      data.push(hourly)
+      series.push({ label: 'Observed, hourly', stroke: css('--obs'), width: 1, spanGaps: true, points: { show: false } })
+      entries.push({ idx: data.length - 1, label: 'Observed, hourly', colour: css('--obs') })
+    }
+    const levels = (point.alerts ?? []).filter((a) => a.cfs != null && (!log || a.cfs >= 1))
     const edge: uPlot.Series = { stroke: 'transparent', width: 0, spanGaps: true, points: { show: false } }
     const addFan = (label: string, colour: string, dates: string[], qs: number[][]) => {
       const arrs = qs.map(() => col())   // p05, p95, p25, p75, p50
@@ -68,7 +93,14 @@ export function PointChart({ point, log, height = 360 }: { point: PointData; log
       tzDate: (t) => uPlot.tzDate(new Date(t * 1e3), 'UTC'),
       legend: { show: false },
       cursor: { y: false, points: { size: 6 } },
-      scales: { x: { time: true }, y: { distr: log ? 3 : 1, log: 10 } },
+      scales: {
+        x: { time: true },
+        // The flood categories stay in view even when the river is far below them.
+        y: { distr: log ? 3 : 1, log: 10, ...(levels.length ? { range: (_u: uPlot, min: number | null, max: number | null) => {
+          const hi = Math.max(max ?? 0, ...levels.map((a) => a.cfs!))
+          return log ? uPlot.rangeLog(min ?? 1, hi, 10, true) : uPlot.rangeNum(min ?? 0, hi, 0.1, true)
+        } } : {}) },
+      },
       axes: [
         { stroke: css('--dim'), grid: { stroke: css('--rule'), width: 1 }, ticks: { show: false }, font: '11px ui-monospace, Menlo, monospace' },
         { stroke: css('--dim'), grid: { stroke: css('--rule'), width: 1 }, ticks: { show: false }, size: 56, font: '11px ui-monospace, Menlo, monospace',
@@ -76,6 +108,23 @@ export function PointChart({ point, log, height = 360 }: { point: PointData; log
       ],
       series, bands,
       hooks: {
+        draw: [(u) => {
+          const { left, top, width, height: h } = u.bbox
+          u.ctx.save()
+          u.ctx.setLineDash([4, 4])
+          u.ctx.lineWidth = 1
+          u.ctx.font = `${10 * devicePixelRatio}px ui-monospace, Menlo, monospace`
+          u.ctx.textAlign = 'right'
+          u.ctx.textBaseline = 'bottom'
+          for (const a of levels) {
+            const y = u.valToPos(a.cfs!, 'y', true)
+            if (y < top || y > top + h) continue
+            u.ctx.strokeStyle = u.ctx.fillStyle = alertColour(a)
+            u.ctx.beginPath(); u.ctx.moveTo(left, y); u.ctx.lineTo(left + width, y); u.ctx.stroke()
+            u.ctx.fillText(`${a.label} ${a.ft} ft`, left + width - 4 * devicePixelRatio, y - 2 * devicePixelRatio)
+          }
+          u.ctx.restore()
+        }],
         setCursor: [(u) => {
           const t = tip.current
           const i = u.cursor.idx

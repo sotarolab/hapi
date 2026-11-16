@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type PointData } from './api'
 import { LabPane } from './components/LabPane'
-import { MODEL_VARS, PointChart } from './components/PointChart'
+import { MODEL_VARS, PointChart, category, latest } from './components/PointChart'
 import { PointMap } from './components/PointMap'
 import { SatellitePane } from './components/SatellitePane'
 import { WeatherPane } from './components/WeatherPane'
@@ -75,7 +75,10 @@ function PointCard({ point }: { point: PointData }) {
   const [log, setLog] = useState(true)
   const models = Object.entries(point.models)
   const last = point.obs.at(-1)
+  const alerts = point.alerts ?? []
+  const now = point.live ? latest(point.live) : null
   const peak = point.official ? Math.max(...point.official.flow_cfs.filter((v): v is number => v != null), 0) : null
+  const where = (cfs: number | null) => { const c = category(cfs, alerts); return c ? ` · ${c}` : '' }
   return (
     <div>
       <div className="panel-h">
@@ -91,13 +94,15 @@ function PointCard({ point }: { point: PointData }) {
       </div>
       <div className="tiles">
         {last && <div className="tile"><span className="eyebrow">Observed {dayLabel(last[0])}</span><b className="num">{fmtFlow(last[1])} cfs</b><p className="note">CDEC daily mean inflow</p></div>}
+        {now && <div className="tile"><span className="eyebrow">Hourly, {now.when}</span><b className="num">{fmtFlow(now.cfs)} cfs</b><p className="note">{point.live!.source}{where(now.cfs)}</p></div>}
         {point.hefs && <div className="tile"><span className="eyebrow">HEFS median, day 1</span><b className="num">{fmtFlow(point.hefs.p50[1])} cfs</b><p className="note">5-95%: {fmtFlow(point.hefs.p05[1])} to {fmtFlow(point.hefs.p95[1])} · issued {point.hefs.issued.slice(0, 8)}</p></div>}
         {models.map(([name, m], i) => <div key={name} className="tile"><span className="eyebrow" style={{ color: `var(${MODEL_VARS[i % MODEL_VARS.length]})` }}>{name}, day 1</span><b className="num">{fmtFlow(m.q50[0])} cfs</b><p className="note">5-95%: {fmtFlow(m.q05[0])} to {fmtFlow(m.q95[0])} · issued {m.issued}</p></div>)}
-        {point.official && <div className="tile"><span className="eyebrow">NWS official peak</span><b className="num">{fmtFlow(peak)} cfs</b><p className="note">issued {point.official.issued?.slice(0, 16)}Z{point.flood_stages_ft ? ` · flood stages ${point.flood_stages_ft.join(' / ')} ft` : ''}</p></div>}
+        {point.official && <div className="tile"><span className="eyebrow">NWS official peak</span><b className="num">{fmtFlow(peak)} cfs</b><p className="note">issued {point.official.issued?.slice(0, 16)}Z{where(peak)}</p></div>}
       </div>
       <PointChart point={point} log={log} />
       <div className="legend">
-        <span><i style={{ background: 'var(--obs)' }} />Observed</span>
+        <span><i style={{ background: 'var(--obs)' }} />Observed{point.live ? ', daily and hourly' : ''}</span>
+        {alerts.some((a) => a.cfs != null) && <span><i style={{ background: 'var(--warn)' }} />NWS flood categories: {alerts.map((a) => `${a.label.toLowerCase()} ${a.ft} ft`).join(', ')}</span>}
         {point.hefs && <span><i className="band" style={{ background: 'var(--cool)' }} />HEFS 5-95% / 25-75%, median</span>}
         {models.map(([name], i) => <span key={name}><i className="band" style={{ background: `var(${MODEL_VARS[i % MODEL_VARS.length]})` }} />{name} 5-95% / 25-75%, median</span>)}
         {point.official && <span><i style={{ background: 'var(--official)' }} />NWS official (hourly)</span>}

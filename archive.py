@@ -7,8 +7,8 @@ Run: python archive.py [out_dir]   (default: data/)
 from __future__ import annotations
 
 import gzip
+import http.client
 import sys
-import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,7 +41,7 @@ def fetch(url: str) -> bytes | None:
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             return r.read()
-    except (urllib.error.URLError, TimeoutError) as e:
+    except (OSError, http.client.HTTPException) as e:  # URLError, timeouts and dropped connections alike
         print(f"FAILED {url}: {e}", file=sys.stderr)
         return None
 
