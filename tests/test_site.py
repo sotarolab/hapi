@@ -1,3 +1,4 @@
+import gzip
 import importlib.util
 import json
 from datetime import datetime, timezone
@@ -21,3 +22,27 @@ def test_build_writes_index_and_point_files(tmp_path):
     assert site.percentiles([3, 1, 2]) == [1, 1, 2, 3, 3]
     guec = json.loads((tmp_path / "site" / "points" / "GUEC1.json").read_text())
     assert guec["hefs"] is None and guec["official"] is None and guec["flood_stages_ft"] == [32, 35, 40]
+    assert fol["weather"] is None and guec["weather"] is None  # nothing archived by weather.py
+
+
+def test_weather_panel_is_built_from_the_issue_hour(tmp_path):
+    hours = [f"2026-11-{16 + h // 24:02d}T{h % 24:02d}:00" for h in range(96)]
+    ivt = [100] * 12 + [600] * 30 + [100] * 54  # 30 h at tier 2: CAT 2, starting at hour 12
+    w = {"times": hours, "ivt": ivt, "precip_mm": {"GFS": [2.54] * 96, "ICON": [5.08] * 90 + [None] * 6},
+         "freezing_m": {"GFS": [2000.0] * 48 + [3000.0] * 48}}
+    d = tmp_path / "weather" / "FOLC1"
+    d.mkdir(parents=True)
+    (d / "20261116T063700Z.gz").write_bytes(gzip.compress(json.dumps(w).encode()))
+    panel = site.weather_latest(tmp_path, "FOLC1")
+    assert panel["times"][0] == "2026-11-16T06:00" and len(panel["times"]) == 90  # the six hours before issue are dropped
+    ar, precip, freezing = panel["tiles"]
+    assert ar["value"] == "CAT 2: Moderate" and ar["flag"] == "warn"
+    assert "peak 600 kg/m/s · arrives Nov 16 12Z · 30 h above 250" in ar["note"]
+    assert precip == {"label": "Precip through Nov 19, GFS", "value": "9.00 in", "note": "", "flag": None}  # ICON stops short
+    assert freezing["value"] == "6,560 to 9,840 ft"
+    charts = {c["id"]: c for c in panel["charts"]}
+    assert list(charts) == ["precip", "ivt", "freezing"] and charts["ivt"]["line"]["value"] == 250 and "fetched 2026-11-16 06:37Z" in panel["note"]
+    assert charts["precip"]["series"][0]["values"][-1] == 9.0 and charts["precip"]["series"][1]["values"][-1] is None
+    assert charts["precip"]["bars"]["label"] == "GFS, hourly"
+    (d / "20261125T003700Z.gz").write_bytes(gzip.compress(json.dumps(w).encode()))
+    assert site.weather_latest(tmp_path, "FOLC1") is None  # a file fetched after its last forecast hour shows nothing

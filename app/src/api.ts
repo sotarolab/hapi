@@ -17,11 +17,28 @@ export interface Point {
 export interface Fan { issued: string; dates: string[]; p05: number[]; p25: number[]; p50: number[]; p75: number[]; p95: number[] }
 export interface ModelFan { issued: string; dates: string[]; q05: number[]; q25: number[]; q50: number[]; q75: number[]; q95: number[] }
 export interface Official { issued: string | null; times: string[]; stage_ft: (number | null)[]; flow_cfs: (number | null)[] }
+/** The weather panel as site.py wrote it, ready to draw: every label, unit and colour (a CSS token name) is data. */
+export interface WeatherTile { label: string; value: string; note: string; flag: 'warn' | 'danger' | null }
+export interface WeatherSeries { label: string; colour: string; values: (number | null)[] }
+export interface WeatherChart {
+  id: string
+  label: string
+  unit: string
+  digits: number
+  series: WeatherSeries[]
+  /** Hourly amounts drawn as bars hanging from the top, on their own scale. */
+  bars?: WeatherSeries
+  /** A reference level drawn across the chart. */
+  line?: { value: number; label: string }
+}
+export interface Weather { issued: string; times: string[]; tiles: WeatherTile[]; charts: WeatherChart[]; note: string }
 export interface PointData extends Point {
   obs: [string, number][]
   hefs: Fan | null
   models: Record<string, ModelFan>
   official: Official | null
+  /** Absent in files built before weather.py existed, null when nothing is archived for the point. */
+  weather?: Weather | null
 }
 export interface Cell {
   product: string

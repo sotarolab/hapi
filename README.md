@@ -20,14 +20,22 @@ First model product: `quantile_inflow_v1_s0`, a regional quantile LSTM on Open-M
 skill on water years 2016-2025 is in that package; the live score is this ledger.
 
     python archive.py          # writes data/<product>/<point>/<UTC time>.gz, skipping unchanged files
+    python weather.py          # writes data/weather/<point>/<UTC time>.gz: the weather forecast at each point
     python score.py            # refreshes data/cdec_inflow/<station>.csv, writes data/scores/inflow_daily.csv
     python -m pytest tests
     jupyter lab notebooks/ledger.ipynb   # observed inflow with the newest HEFS fan per reservoir, and the score table
 
-Step 3: `site.py` digests the archive into `data/site/` (points, the newest fans, the scorecards) and `app/` is the
-page that reads it: a map of the points, each point's observed inflow with the HEFS fan, the model fans and the
-NWS official forecast, and a Lab tab with the record and the scorecards. It is static (Vite + React, Leaflet,
-uPlot), deployed to GitHub Pages by `.github/workflows/pages.yml`, and reads the data branch directly.
+Weather: `weather.py` runs with the archive and saves the forecast at every point from Open-Meteo: hourly
+precipitation and freezing level from GFS, ECMWF IFS, ICON and NBM, and integrated vapor transport (IVT)
+computed from GFS winds and humidity on pressure levels. `ar_scale.py` grades the IVT on the atmospheric river
+scale of Ralph et al. (2019).
+
+Step 3: `site.py` digests the archive into `data/site/` (points, the newest fans, the scorecards, the weather
+panel) and `app/` is the page that reads it: a map of the points with radar and satellite overlays, each point's
+observed inflow with the HEFS fan, the model fans and the NWS official forecast, its weather and AR scale,
+satellite and radar loops, and a Lab tab with the record and the scorecards. Every number, label and unit on the
+weather panel is written by `site.py`; the page only draws it. It is static (Vite + React, Leaflet, uPlot),
+deployed to GitHub Pages by `.github/workflows/pages.yml`, and reads the data branch directly.
 
     cd app && npm ci && npm test && npm run build
     (cd data/site && python -m http.server 8070) &   # then, for the dev server against local data:
