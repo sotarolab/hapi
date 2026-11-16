@@ -30,6 +30,10 @@ precipitation and freezing level from GFS, ECMWF IFS, ICON and NBM, and integrat
 computed from GFS winds and humidity on pressure levels. `ar_scale.py` grades the IVT on the atmospheric river
 scale of Ralph et al. (2019).
 
+Live: `live.py` rewrites `data/live/<lid>.json` every run with the week's hourly observed flow at each point
+(a 24-hour mean of CDEC's noisy hourly computed inflow at the reservoirs, the NWS observed series at the gauges) and each gauge's NWS flood
+categories in cfs, read off the gauge's NWS rating curve where NWPS gives only the stage.
+
 Step 3: `site.py` digests the archive into `data/site/` (points, the newest fans, the scorecards, the weather
 panel) and `app/` is the page that reads it: a map of the points with radar and satellite overlays, each point's
 observed inflow with the HEFS fan, the model fans and the NWS official forecast, its weather and AR scale,

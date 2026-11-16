@@ -1,6 +1,6 @@
 """Build the static site's data from the archive, observations and scores: data/site/index.json (points, the
 record, the scorecards) and data/site/points/<lid>.json (recent observations, the newest HEFS fan, the newest
-model forecasts, the NWS official forecast, the weather panel). The client at app/ reads these files from the data branch.
+model forecasts, the NWS official forecast, the weather panel, the week's hourly flow and the flood categories). The client at app/ reads these files from the data branch.
 
 Run: python site.py [out_dir]   (default: data/)
 """
@@ -133,6 +133,12 @@ def weather_latest(out: Path, lid: str) -> dict | None:
                     f"AR scale after Ralph et al. (2019), on hourly IVT. Hours are UTC; fetched {issue_hour[:10]} {p.stem[9:11]}:{p.stem[11:13]}Z."}
 
 
+def live_latest(out: Path, lid: str) -> dict | None:
+    """What live.py fetched for the point: the week's hourly flow and, at a gauge, its flood categories."""
+    p = out / "live" / f"{lid}.json"
+    return json.loads(p.read_text()) if p.exists() else None
+
+
 def scorecards(out: Path) -> dict:
     path = out / "scores" / "inflow_daily.csv"
     if not path.exists():
@@ -171,16 +177,19 @@ def build(out: Path, now: datetime) -> dict:
         points.append(point)
         (site / "points" / f"{lid}.json").write_text(json.dumps({
             **point, "obs": [[d.isoformat(), v] for d, v in obs], "hefs": hefs_latest(out, lid),
-            "models": models_latest(out, lid), "official": None, "weather": weather_latest(out, lid)}))
-    for lid, (name, lat, lon, usgs, stages) in GAUGES.items():
+            "models": models_latest(out, lid), "official": None, "weather": weather_latest(out, lid),
+            "live": live_latest(out, lid), "alerts": []}))
+    for lid, (name, lat, lon, usgs) in GAUGES.items():
         files = list((out / "hefs_daily" / lid).glob("*.gz")) if (out / "hefs_daily" / lid).is_dir() else []
         archive_days |= {p.stem[:8] for p in files}
         point = {"lid": lid, "kind": "gauge", "name": name, "lat": lat, "lon": lon, "usgs": usgs, "scored": False,
-                 "flood_stages_ft": stages, "note": "forecasts archived; observed flow and scoring not yet wired"}
+                 "note": "forecasts archived; daily scoring not yet wired"}
         points.append(point)
+        live = live_latest(out, lid) or {}
         (site / "points" / f"{lid}.json").write_text(json.dumps({
             **point, "obs": [], "hefs": hefs_latest(out, lid), "models": models_latest(out, lid),
-            "official": official_latest(out, lid), "weather": weather_latest(out, lid)}))
+            "official": official_latest(out, lid), "weather": weather_latest(out, lid),
+            "live": {k: v for k, v in live.items() if k != "alerts"} or None, "alerts": live.get("alerts", [])}))
     index = {"built": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "record_start": min(archive_days) if archive_days else None,
              "archive_days": len(archive_days), "leads": list(LEADS), "min_pairs": MIN_PAIRS, "points": points,
              "scores": scorecards(out)}
