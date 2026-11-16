@@ -1,4 +1,4 @@
-# inflow-ledger
+# hapi
 
 A public, timestamped record of river-flow and reservoir-inflow forecasts for California,
 scored against the official forecasts.
@@ -16,7 +16,7 @@ is printed. Model forecasts dropped under `data/forecasts/<model>/<point>/<issue
 but not yet scored.
 
 First model product: `quantile_inflow_v1_s0`, a regional quantile LSTM on Open-Meteo forcing from the
-private `embalse` package, issuing 14-day forecasts for the 11 reservoirs since 2026-11-15. Its retrospective
+`caudal` package, issuing 14-day forecasts for the 11 reservoirs since 2026-11-15. Its retrospective
 skill on water years 2016-2025 is in that package; the live score is this ledger.
 
     python archive.py          # writes data/<product>/<point>/<UTC time>.gz, skipping unchanged files
@@ -33,4 +33,4 @@ uPlot), deployed to GitHub Pages by `.github/workflows/pages.yml`, and reads the
     (cd data/site && python -m http.server 8070) &   # then, for the dev server against local data:
     VITE_DATA_BASE=/sitedata npm run dev
 
-The archive and scores live on the `data` branch (github.com/sotarolab/inflow-ledger/tree/data).
+The archive and scores live on the `data` branch (github.com/sotarolab/hapi/tree/data).

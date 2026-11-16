@@ -34,7 +34,7 @@ export default function App() {
   return (
     <div className="wrap">
       <header className="top">
-        <div className="brand"><h1>inflow-ledger</h1><span className="sub">California reservoir inflow and river flood forecasts, scored in public</span></div>
+        <div className="brand"><h1>hapi</h1><span className="sub">California reservoir inflow and river flood forecasts, scored in public</span></div>
         <span className="stamp"><i className={`live${index.error ? ' stale' : ''}`} />{index.data ? `day ${day} · built ${index.data.built.slice(0, 16)}Z` : index.error ? `data: ${index.error}` : 'loading'}</span>
       </header>
       <nav className="tabs">{TABS.map((t) => <button key={t.id} className={`tab${t.id === tab ? ' active' : ''}`} onClick={() => setView({ tab: t.id, lid })}>{t.label}</button>)}</nav>
@@ -57,8 +57,8 @@ export default function App() {
       )}
       {tab === 'lab' && (index.data ? <LabPane index={index.data} onPick={pick} /> : <section className="panel"><p className="note">{index.error ?? 'Loading…'}</p></section>)}
       <footer>
-        Archive, observations, forecasts and scores: the <a href="https://github.com/sotarolab/inflow-ledger/tree/data">data branch</a> of
-        <a href="https://github.com/sotarolab/inflow-ledger"> inflow-ledger</a>. Official products from CNRFC (HEFS) and NWS (NWPS); observed inflow from CDEC.
+        Archive, observations, forecasts and scores: the <a href="https://github.com/sotarolab/hapi/tree/data">data branch</a> of
+        <a href="https://github.com/sotarolab/hapi"> hapi</a>. Official products from CNRFC (HEFS) and NWS (NWPS); observed inflow from CDEC.
         Models are issued before the outcome exists and never revised.
       </footer>
     </div>

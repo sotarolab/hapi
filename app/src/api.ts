@@ -1,6 +1,6 @@
 /** The site data: built by site.py every archive run and committed to the data branch. */
 export const DATA_BASE: string =
-  import.meta.env.VITE_DATA_BASE ?? 'https://raw.githubusercontent.com/sotarolab/inflow-ledger/data/data/site'
+  import.meta.env.VITE_DATA_BASE ?? 'https://raw.githubusercontent.com/sotarolab/hapi/data/data/site'
 
 export interface Point {
   lid: string

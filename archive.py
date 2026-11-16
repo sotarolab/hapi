@@ -37,7 +37,7 @@ def sources() -> list[tuple[str, str, str]]:
 
 
 def fetch(url: str) -> bytes | None:
-    req = urllib.request.Request(url, headers={"User-Agent": "inflow-ledger-archiver"})
+    req = urllib.request.Request(url, headers={"User-Agent": "hapi-archiver"})
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             return r.read()
