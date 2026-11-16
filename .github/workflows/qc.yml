@@ -1,0 +1,40 @@
+name: qc
+
+# Lint, types and tests for the scripts; build and tests for the page. On every pull request and
+# on main, so the required checks for the default branch are the jobs below: python and app.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: qc-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: make qc PY=.venv/bin/python
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run build   # tsc -b && vite build: the type check is the build
+      - run: npm test

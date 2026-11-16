@@ -11,7 +11,7 @@ from __future__ import annotations
 import csv
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from archive import FLOOD, INFLOW, fetch
@@ -103,11 +103,8 @@ def update_live(out: Path, now: datetime) -> int:
         (d / f"{lid}.json").write_text(json.dumps(since(live, start.strftime("%Y-%m-%dT%H:%MZ"))))
     for lid in FLOOD:
         bodies = [fetch(NWPS.format(lid=lid) + suffix) for suffix in ("/stageflow/observed", "", "/ratings")]
-        if any(b is None for b in bodies):
-            failed += 1
-            continue
         try:
-            obs, gauge, rating = (json.loads(b) for b in bodies)
+            obs, gauge, rating = (json.loads(b or b"") for b in bodies)  # a failed fetch reads as bad JSON
             live = {"source": f"NWS observed at {lid}", **nwps_observed(obs),
                     "alerts": alerts(gauge, [(r["stage"], r["flow"]) for r in rating.get("data", [])])}
         except (KeyError, TypeError, ValueError) as e:
@@ -120,6 +117,6 @@ def update_live(out: Path, now: datetime) -> int:
 
 if __name__ == "__main__":
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "data")
-    n = update_live(out, datetime.now(timezone.utc))
+    n = update_live(out, datetime.now(UTC))
     print(f"live: {len(list((out / 'live').glob('*.json')))} points written, {n} failed")
     sys.exit(1 if n else 0)

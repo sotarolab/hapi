@@ -2,6 +2,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from datetime import UTC
+
 import weather
 
 
@@ -11,7 +13,7 @@ def test_ivt_matches_the_analytic_integral():
     levels = [1000, 900, 800]
     expected = sum((q(a) + q(b)) / 2 * 10 * (a - b) * 100 for a, b in zip(levels, levels[1:])) / 9.81
     got = weather.ivt([(p, 10.0, 270, 100, 0.0) for p in levels])
-    assert abs(got - expected) < 1e-9 and 70 < got < 90
+    assert got is not None and abs(got - expected) < 1e-9 and 70 < got < 90
     assert weather.ivt([(1000, 10.0, 270, 100, 0.0), (900, None, 270, 100, 0.0)]) is None
 
 
@@ -19,6 +21,7 @@ def test_ivt_adds_the_two_wind_components():
     south = weather.ivt([(p, 10.0, 180, 100, 0.0) for p in (1000, 900)])
     west = weather.ivt([(p, 10.0, 270, 100, 0.0) for p in (1000, 900)])
     southwest = weather.ivt([(p, 10.0, 225, 100, 0.0) for p in (1000, 900)])
+    assert south is not None and west is not None and southwest is not None
     assert abs(south - west) < 1e-9 and abs(southwest - west) < 1e-9  # magnitude does not depend on direction
 
 
@@ -41,10 +44,10 @@ def test_urls_name_every_level_and_model():
 
 
 def test_fresh_within_five_hours_of_the_newest_file(tmp_path):
-    from datetime import datetime, timezone
+    from datetime import datetime
     d = tmp_path / "weather" / "FOLC1"
     d.mkdir(parents=True)
     (d / "20261116T043700Z.gz").write_bytes(b"")
-    assert weather.fresh(tmp_path, "FOLC1", datetime(2026, 11, 16, 9, 0, tzinfo=timezone.utc))
-    assert not weather.fresh(tmp_path, "FOLC1", datetime(2026, 11, 16, 9, 40, tzinfo=timezone.utc))
-    assert not weather.fresh(tmp_path, "GUEC1", datetime(2026, 11, 16, 9, 0, tzinfo=timezone.utc))
+    assert weather.fresh(tmp_path, "FOLC1", datetime(2026, 11, 16, 9, 0, tzinfo=UTC))
+    assert not weather.fresh(tmp_path, "FOLC1", datetime(2026, 11, 16, 9, 40, tzinfo=UTC))
+    assert not weather.fresh(tmp_path, "GUEC1", datetime(2026, 11, 16, 9, 0, tzinfo=UTC))

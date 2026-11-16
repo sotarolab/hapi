@@ -10,7 +10,7 @@ import gzip
 import http.client
 import sys
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Reservoir inflow points: CNRFC id -> CDEC station holding observed daily inflow (sensor 76).
@@ -59,13 +59,12 @@ def save(out: Path, lid: str, product: str, body: bytes, now: datetime) -> Path 
 
 
 def main(out: Path) -> int:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     saved = failed = 0
     for lid, product, url in sources():
         body = fetch(url)
         # CNRFC answers a missing file with an HTML page, so check the payload, not just the status.
-        ok = body is not None and (body.startswith(b"GMT") if product.startswith("hefs") else body[:1] == b"{")
-        if not ok:
+        if body is None or not (body.startswith(b"GMT") if product.startswith("hefs") else body[:1] == b"{"):
             failed += 1
             print(f"BAD PAYLOAD {lid} {product}", file=sys.stderr)
             continue

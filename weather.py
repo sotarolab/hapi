@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import math
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from archive import fetch, save
@@ -64,11 +64,11 @@ def derive(surface: dict, profile: dict) -> dict:
 def fresh(out: Path, lid: str, now: datetime) -> bool:
     """True when the point's newest archived forecast is under FRESH_HOURS old (the stem is its UTC fetch time)."""
     files = sorted((out / "weather" / lid).glob("*.gz")) if (out / "weather" / lid).is_dir() else []
-    return bool(files) and now - datetime.strptime(files[-1].stem, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc) < timedelta(hours=FRESH_HOURS)
+    return bool(files) and now - datetime.strptime(files[-1].stem, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC) < timedelta(hours=FRESH_HOURS)
 
 
 def main(out: Path) -> int:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     saved = failed = skipped = 0
     points = {lid: v[1:3] for lid, v in {**RESERVOIRS, **GAUGES}.items()}
     for lid, (lat, lon) in points.items():
@@ -77,7 +77,7 @@ def main(out: Path) -> int:
             continue
         bodies = [fetch(url.format(lat=lat, lon=lon)) for url in (SURFACE, PROFILE)]
         try:
-            body = json.dumps(derive(*(json.loads(b) for b in bodies))).encode()
+            body = json.dumps(derive(*(json.loads(b or b"") for b in bodies))).encode()  # a failed fetch reads as bad JSON
         except (TypeError, ValueError, KeyError) as e:  # a failed fetch, bad JSON, or Open-Meteo's error object
             failed += 1
             print(f"BAD PAYLOAD {lid} weather: {e!r}", file=sys.stderr)
