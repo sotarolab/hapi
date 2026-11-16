@@ -38,7 +38,7 @@ weather panel is written by `site.py`; the page only draws it. It is static (Vit
 deployed to GitHub Pages by `.github/workflows/pages.yml`, and reads the data branch directly.
 
     cd app && npm ci && npm test && npm run build
-    (cd data/site && python -m http.server 8070) &   # then, for the dev server against local data:
+    (cd data/site && python -m http.server 8070) &   # then, for the dev server against local data (SITEDATA=http://localhost:<port> if 8070 is busy):
     VITE_DATA_BASE=/sitedata npm run dev
 
 The archive and scores live on the `data` branch (github.com/sotarolab/hapi/tree/data).
