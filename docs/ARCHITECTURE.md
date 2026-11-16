@@ -37,7 +37,7 @@ flowchart LR
   end
   DATA[("hapi data branch")]
   DATA -- "observed inflow, ERA5 forcing, checkpoint" --> ISSUE
-  ISSUE -- "forecasts/&lt;model&gt;/&lt;point&gt;/&lt;date&gt;.csv" --> DATA
+  ISSUE -- "forecasts/(model)/(point)/(date).csv" --> DATA
   JOB -- "archives, scores, live, site/" --> DATA
   DATA -- "site/*.json over raw.githubusercontent.com" --> PAGE
 ```
@@ -59,8 +59,8 @@ sequenceDiagram
   A->>D: hefs_daily/, hefs_hourly/, nwps_forecast/ (new issues only)
   W->>D: weather/ (a point only when its newest file is 5 h old)
   S->>D: cdec_inflow/ refreshed, scores/inflow_daily.csv rewritten
-  L->>D: live/<point>.json rewritten (hourly flow, flood categories)
-  B->>D: site/index.json, site/points/<point>.json rewritten
+  L->>D: live/(point).json rewritten (hourly flow, flood categories)
+  B->>D: site/index.json, site/points/(point).json rewritten
   Note over A,D: one commit per run; a run that changes nothing commits nothing
 ```
 
@@ -104,7 +104,7 @@ flowchart TB
 flowchart LR
   IDX["site/index.json<br/>points, record, scorecards"] --> MAP["map and point picker"]
   IDX --> LAB["Lab: the record, scorecard by lead, by point"]
-  PT["site/points/&lt;point&gt;.json"] --> TILES["tiles: observed, hourly, HEFS, model, official peak"]
+  PT["site/points/(point).json"] --> TILES["tiles: observed, hourly, HEFS, model, official peak"]
   PT --> CHART["flow chart: observed daily and hourly,<br/>HEFS fan, model fans, official forecast,<br/>flood categories as dashed levels"]
   PT --> WX["weather pane: AR scale, precip, freezing level, IVT"]
   PT --> SKY["sky row: GOES loop and nearest radar loop<br/>(images straight from NOAA, nothing built)"]
