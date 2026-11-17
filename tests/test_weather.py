@@ -27,11 +27,23 @@ def test_ivt_adds_the_two_wind_components():
 
 def test_derive_keeps_models_with_values_and_computes_ivt():
     times = ["2026-11-16T00:00", "2026-11-16T01:00"]
-    surface = {"hourly": {"time": times, **{f"precipitation_{m}": [0.1, 0.2] for m in weather.MODELS},
-                          "freezing_level_height_gfs_seamless": [2500.0, 2400.0],
-                          "freezing_level_height_ecmwf_ifs025": [None, None]}}
-    column = {"wind_speed": [10.0, 20.0], "wind_direction": [270, 270], "relative_humidity": [100, 100], "temperature": [0.0, 0.0]}
-    profile = {"hourly": {"time": times, **{f"{v}_{p}hPa": column[v] for p in weather.LEVELS for v in weather.LEVEL_VARS}}}
+    surface = {
+        "hourly": {
+            "time": times,
+            **{f"precipitation_{m}": [0.1, 0.2] for m in weather.MODELS},
+            "freezing_level_height_gfs_seamless": [2500.0, 2400.0],
+            "freezing_level_height_ecmwf_ifs025": [None, None],
+        }
+    }
+    column = {
+        "wind_speed": [10.0, 20.0],
+        "wind_direction": [270, 270],
+        "relative_humidity": [100, 100],
+        "temperature": [0.0, 0.0],
+    }
+    profile = {
+        "hourly": {"time": times, **{f"{v}_{p}hPa": column[v] for p in weather.LEVELS for v in weather.LEVEL_VARS}}
+    }
     d = weather.derive(surface, profile)
     assert d["times"] == times and list(d["precip_mm"]) == ["GFS", "ECMWF", "ICON", "NBM"]
     assert d["freezing_m"] == {"GFS": [2500.0, 2400.0]}  # ECMWF has no freezing level and is left out
@@ -45,6 +57,7 @@ def test_urls_name_every_level_and_model():
 
 def test_fresh_within_five_hours_of_the_newest_file(tmp_path):
     from datetime import datetime
+
     d = tmp_path / "weather" / "FOLC1"
     d.mkdir(parents=True)
     (d / "20261116T043700Z.gz").write_bytes(b"")

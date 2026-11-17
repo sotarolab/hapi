@@ -2,6 +2,7 @@
 weather forecast at each."""
 
 # lid: (name, lat, lon). Flood gauges carry their USGS id; their NWS flood categories come from live.py.
+# fmt: off
 RESERVOIRS = {
     "LAMC1": ("Lake Mendocino", 39.197, -123.186), "ORDC1": ("Oroville", 39.540, -121.493),
     "SHDC1": ("Shasta", 40.718, -122.420), "FOLC1": ("Folsom", 38.683, -121.183),
@@ -26,3 +27,4 @@ GAUGES = {
     "FTDC1": ("Smith River at Dr Fine Bridge", 41.881, -124.136, "11532650"),
     "MHBC1": ("Cosumnes River at Michigan Bar", 38.500, -121.045, "11335000"),
 }
+# fmt: on

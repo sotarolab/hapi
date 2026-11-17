@@ -13,6 +13,7 @@ import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
+# fmt: off
 # Reservoir inflow points: CNRFC id -> CDEC station holding observed daily inflow (sensor 76).
 # Archive wide, score narrow: WSDC1, NDPC1, CEGC1, INVC1 have negative computed inflows at low flow.
 INFLOW = {
@@ -23,6 +24,7 @@ INFLOW = {
 # River gauges with NWS flood categories (North Coast plus Cosumnes).
 FLOOD = ["HOPC1", "HEAC1", "GUEC1", "NVRC1", "FTSC1", "SCOC1", "LEGC1", "BRGC1", "ARCC1", "ORIC1",
          "FTDC1", "MHBC1"]
+# fmt: on
 
 HEFS = "https://www.cnrfc.noaa.gov/csv/{lid}_hefs_csv_{step}.csv"
 NWPS = "https://api.water.noaa.gov/nwps/v1/gauges/{lid}/stageflow/forecast"

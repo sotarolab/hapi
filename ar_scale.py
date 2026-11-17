@@ -91,8 +91,7 @@ def classify_ar(ivt_values, time_step_hours: float, valid_times=None) -> ARClass
     """
     max_ivt = max(ivt_values) if len(ivt_values) else 0.0
     duration = _longest_run_hours(ivt_values, time_step_hours)
-    onset_time, offset_time = (_first_last_crossing(ivt_values, valid_times)
-                               if valid_times is not None else (None, None))
+    onset_time, offset_time = _first_last_crossing(ivt_values, valid_times) if valid_times is not None else (None, None)
 
     if max_ivt < IVT_AR_THRESHOLD:
         return ARClassification(max_ivt, duration, 0, "No AR conditions", "n/a")
@@ -102,9 +101,11 @@ def classify_ar(ivt_values, time_step_hours: float, valid_times=None) -> ARClass
         # Only tier 1 (250-500 kg/m/s) lasting under 24 h lands here: the one cell Table 2 and Fig. 4 leave
         # off the numbered scale ("Weak AR"). AR conditions were real, so it is not "No AR conditions", but
         # it is weaker than a graded Cat 1 and must not be clipped up to it.
-        return ARClassification(max_ivt, duration, 0, "Weak (below CAT 1)", "primarily beneficial",
-                                onset_time, offset_time)
+        return ARClassification(
+            max_ivt, duration, 0, "Weak (below CAT 1)", "primarily beneficial", onset_time, offset_time
+        )
 
     category = min(5, preliminary)
-    return ARClassification(max_ivt, duration, category, AR_LABELS[category], AR_IMPACT[category],
-                            onset_time, offset_time)
+    return ARClassification(
+        max_ivt, duration, category, AR_LABELS[category], AR_IMPACT[category], onset_time, offset_time
+    )

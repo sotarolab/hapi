@@ -25,8 +25,8 @@ def test_duration_shift_is_demote_baseline_promote():
     assert _duration_shift(18) == -1
     assert _duration_shift(24) == 0
     assert _duration_shift(47.9) == 0
-    assert _duration_shift(48) == 1   # inclusive: Table 2's column is headed ">=48", not ">48"
-    assert _duration_shift(96) == 1   # no growing bonus beyond +1
+    assert _duration_shift(48) == 1  # inclusive: Table 2's column is headed ">=48", not ">48"
+    assert _duration_shift(96) == 1  # no growing bonus beyond +1
 
 
 def test_longest_run_is_sustained_not_total():
@@ -76,7 +76,7 @@ def test_onset_offset_bracket_all_pulses():
     t0 = datetime(2026, 7, 20, tzinfo=UTC)
     times = [t0 + timedelta(hours=6 * i) for i in range(5)]
     result = classify_ar([100, 300, 100, 300, 100], STEP, valid_times=times)
-    assert result.onset_time == times[1]   # first crossing
+    assert result.onset_time == times[1]  # first crossing
     assert result.offset_time == times[3]  # last crossing, across the lull in between
     assert result.max_ivt == 300
     assert result.duration_hours == 6.0
