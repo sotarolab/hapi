@@ -7,16 +7,24 @@ import live
 RATING = [(4.0, 100), (29, 37700), (32, 45000), (35, 53400), (40, 68000), (50, 101000)]
 
 
-def test_cdec_hourly_is_pst_and_skips_missing():
+def test_cdec_hourly_is_pst_and_keeps_missing_hours():
     body = (b"STATION_ID,DURATION,SENSOR_NUMBER,SENSOR_TYPE,DATE TIME,OBS DATE,VALUE,DATA_FLAG,UNITS\n"
             b"FOL,H,76,INFLOW,20261116 2300,20261116 2300,358, ,CFS\n"
             b"FOL,H,76,INFLOW,20261117 0000,20261117 0000,---, ,CFS\n"
             b"FOL,H,76,INFLOW,20261117 0100,20261117 0100,-12, ,CFS\n")
-    assert live.cdec_hourly(body) == (["2026-11-17T07:00Z", "2026-11-17T09:00Z"], [358.0, -12.0])
+    assert live.cdec_hourly(body) == (["2026-11-17T07:00Z", "2026-11-17T08:00Z", "2026-11-17T09:00Z"], [358.0, None, -12.0])
 
 
-def test_trailing_mean_needs_half_a_window_of_valid_hours():
-    assert live.trailing_mean([4, 2, None, None, 6, None, None], 4) == [None, 3, 3, 3, 4, None, None]
+def test_centred_mean_needs_a_full_window():
+    assert live.centred_mean([0, 4, 2, 6, 8, 12], 4) == [None, None, 3, 5, 7, None]  # stamped two hours into its four
+    assert live.centred_mean([0, 4, None, None, 8, 10], 4) == [None] * 6  # never three of four valid
+    assert live.centred_mean([0, 4, None, 6, 8, 10], 4)[2:5] == [3, 6, 8]
+
+
+def test_informative_compares_spread_with_the_mean():
+    assert live.informative([1000.0, 1200.0] * 24)
+    assert not live.informative([1000.0, -900.0, None] * 24)  # swings around a small mean
+    assert not live.informative([1000.0, 1200.0] * 12)  # a single day is too short to judge
 
 
 def test_nwps_observed_scales_kcfs():

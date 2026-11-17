@@ -33,7 +33,7 @@ computed from GFS winds and humidity on pressure levels. `ar_scale.py` grades th
 scale of Ralph et al. (2019).
 
 Live: `live.py` rewrites `data/live/<lid>.json` every run with the week's hourly observed flow at each point
-(a 24-hour mean of CDEC's noisy hourly computed inflow at the reservoirs, the NWS observed series at the gauges) and each gauge's NWS flood
+(at the reservoirs a centred 24-hour mean of CDEC's hourly computed inflow, written only where the hourly values vary less than their mean; at the gauges the NWS observed series) and each gauge's NWS flood
 categories in cfs, read off the gauge's NWS rating curve where NWPS gives only the stage.
 
 Step 3: `site.py` digests the archive into `data/site/` (points, the newest fans, the scorecards, the weather
