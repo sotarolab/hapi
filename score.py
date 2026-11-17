@@ -18,6 +18,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from archive import INFLOW, fetch
+from contract import check_forecast
 
 NOISY = {"WSDC1", "NDPC1", "CEGC1", "INVC1"}  # archived, not scored: negative computed inflows at low flow
 SCORED = {lid: sta for lid, sta in INFLOW.items() if sta and lid not in NOISY}
@@ -79,6 +80,10 @@ def forecasts(out: Path, lid: str) -> list[tuple[str, date, dict[date, list[floa
         fc = read_hefs(p)
         latest[("hefs", min(fc))] = fc
     for p in sorted((out / "forecasts").glob(f"*/{lid}/*.csv")):
+        errors = check_forecast(p)
+        if errors:  # a file that breaks the contract is left out of the record, and said
+            print(f"BAD FORECAST {p.relative_to(out)}: {errors[0]}", file=sys.stderr)
+            continue
         latest[(p.parent.parent.name, date.fromisoformat(p.stem))] = read_quantiles(p)
     return [(product, issue, fc) for (product, issue), fc in latest.items()]
 

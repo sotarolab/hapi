@@ -102,12 +102,12 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  IDX["site/index.json<br/>points, record, scorecards"] --> MAP["map and point picker"]
+  IDX["site/index.json<br/>points, record, scorecards"] --> MAP["rail: point picker and map"]
   IDX --> LAB["Lab: the record, scorecard by lead, by point"]
   PT["site/points/(point).json"] --> TILES["tiles: observed, hourly, HEFS, model, official peak"]
-  PT --> CHART["flow chart: observed daily and hourly,<br/>HEFS fan, model fans, official forecast,<br/>flood categories as dashed levels"]
-  PT --> WX["weather pane: AR scale, precip, freezing level, IVT"]
-  PT --> SKY["sky row: GOES loop and nearest radar loop<br/>(images straight from NOAA, nothing built)"]
+  PT --> CHART["chart card, flow view: observed daily and hourly,<br/>HEFS fan, model fans, official forecast.<br/>Stage view at a gauge: observed and official stage,<br/>flood categories as dashed levels"]
+  PT --> WX["weather tiles and card: AR scale, precip, freezing level, IVT"]
+  PT --> SKY["sky card: one GOES or radar loop at a time<br/>(images straight from NOAA, nothing built)"]
 ```
 
 Each pane in `app/src/components/` draws one part of the file and knows nothing about hydrology: the weather
@@ -121,6 +121,7 @@ pane, for instance, draws whatever tiles and series `site.py` wrote, with their 
 | `archive.py` | Feeds and the fetch and save helpers the other scripts share; CDEC station per reservoir |
 | `weather.py` | Open-Meteo fetch, IVT from the pressure levels, the derived file |
 | `ar_scale.py` | The atmospheric river scale of Ralph et al. (2019) on hourly IVT |
+| `contract.py` | The rules a model forecast file and its manifest meet, and their check |
 | `score.py` | Observations, fair CRPS, 90% coverage, persistence and climatology baselines, leads 1 to 14 |
 | `live.py` | Hourly flow and flood categories, read off the NWS rating curve where NWPS gives only the stage |
 | `site.py` | Everything the page shows, as data |
@@ -131,25 +132,32 @@ pane, for instance, draws whatever tiles and series `site.py` wrote, with their 
 
 ## The contract with caudal
 
-Files, not code. A forecast is `forecasts/<model>/<point>/<issue date>.csv` with columns `date`, `lead` and
-one column per quantile (`q05`, `q25`, `q50`, `q75`, `q95`), in cfs. `score.py` scores any product that
-follows it beside HEFS, with no change to the code, and `site.py` draws it beside the HEFS fan.
+Files, not code. A forecast is `forecasts/<model>/<point>/<issue date>.csv` with columns `date`, `lead`, then
+one column per quantile named `qNN` in increasing order (caudal writes `q05` to `q99`), in cfs, one row per
+lead day counted from the issue date in the file name. `contract.py` states the rules and checks every file:
+`score.py` leaves out one that breaks them and says so, scores the rest beside HEFS with no change to the
+code, and `site.py` draws the newest good one beside the HEFS fan. A product may carry
+`forecasts/<model>/MODEL.json` naming the model, its commit and its checkpoint; caudal checks the same rules
+before it writes, and one real issued file is the fixture that keeps the two checks equal.
 
 ## Limits to know about
 
 - **History size.** Every run that changes something is committed, hourly, and git keeps all of it. If the
   `data` branch nears 1 GB, the raw archives move to file storage and git keeps their checksums.
 - **Observations are revised.** CDEC edits past values, so a score can change after the fact. Forecasts never do.
-- **CDEC's hourly inflow is computed** from storage and release and is noisy; the page shows a 24-hour mean
-  and treats zero hours as missing, which is what CDEC writes when a component sensor is down.
-- **Flood categories need a rating.** NWPS gives category flows for 3 of the 12 gauges; the rest are read off
-  the gauge's NWS rating curve, and a category above the curve's top draws no line.
+- **CDEC's hourly inflow is computed** from storage and release and is noisy. The page shows a centred
+  24-hour mean, only at reservoirs whose hourly values over the week vary less than their mean (four of
+  fifteen on 2026-11-16), and treats zero hours as missing, which is what CDEC writes when a component
+  sensor is down. Even there the mean runs up to about 15% off CDEC's daily value.
+- **Flood categories are stages.** They are drawn in feet in a gauge's stage view. For the text that says
+  which category a flow reaches, NWPS gives category flows for 3 of the 12 gauges; the rest are read off the
+  gauge's NWS rating curve, and a category above the curve's top has no flow.
 - **Site address.** The page is served under the repository name, so a rename changes it.
 
 ## Not built yet
 
 - A `qc` workflow that runs the Python tests on pull requests; today only the page's tests run, in the deploy.
 - Scoring the gauges: the hourly HEFS and the official forecast against the NWS observed series.
-- Checking incoming model files against the contract, and a `MODEL.json` manifest per product.
+- The `MODEL.json` manifest itself, which caudal writes; hapi already reads it.
 - Exceedance probability per gauge: the share of the ensemble above each flood category.
 - A meteorology pane: the NWS forecast discussion and the official NWPS and CNRFC plots.

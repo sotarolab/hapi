@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ar_scale import IVT_AR_THRESHOLD, classify_ar
+from contract import check_forecast, read_manifest
 from points import GAUGES, RESERVOIRS
 from score import LEADS, NOISY, SCORED, read_hefs, read_obs
 
@@ -56,7 +57,8 @@ def hefs_latest(out: Path, lid: str) -> dict | None:
 def models_latest(out: Path, lid: str) -> dict:
     models = {}
     for d in sorted((out / "forecasts").glob("*")) if (out / "forecasts").is_dir() else []:
-        p = newest(d / lid, ".csv")
+        files = sorted((d / lid).glob("*.csv")) if (d / lid).is_dir() else []
+        p = next((f for f in reversed(files) if not check_forecast(f)), None)  # the newest that holds the contract
         if p is None:
             continue
         with p.open() as f:
@@ -65,6 +67,7 @@ def models_latest(out: Path, lid: str) -> dict:
             "issued": p.stem,
             "dates": [r["date"] for r in rows],
             **{k: [round(float(r[k])) for r in rows] for k in ["q05", "q25", "q50", "q75", "q95"] if k in rows[0]},
+            "manifest": read_manifest(d / "MODEL.json"),
         }
     return models
 
