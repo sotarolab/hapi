@@ -1,6 +1,7 @@
 """Fetch past HEFS issues from CNRFC's dated archive into a hindcast folder that has the data folder's
 layout, so score.py scores them unchanged. CNRFC keeps every 12Z issue since January 2014 as one zip per
-river group. Only the start of each zip is read: the issue day and the 14 leads score.py scores.
+river group. Only the start of each zip is read: the issue day and the 15 days after it, which hold the 14 leads score.py
+scores.
 
 A hindcast is not the live record. It is kept in its own folder, never pooled with the data folder and
 never sent to the data branch.
@@ -34,7 +35,9 @@ GROUPS = {
     "SanJoaquin": ["NDPC1", "NMSC1", "FRAC1", "EXQC1"],
     "Tulare": ["ISAC1", "TMDC1", "SCSC1"],
 }
-ROWS = 2 + 1 + max(LEADS)  # two header rows, the issue day, the leads
+# Two header rows, the issue day, the leads and one day more: a row stamped 12Z is the mean of the 24 hours
+# before it, so the day of the last lead sits in the row stamped a day later.
+ROWS = 2 + 1 + max(LEADS) + 1
 
 
 def head(stream: BinaryIO, lines: int) -> list[str] | None:
