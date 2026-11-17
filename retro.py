@@ -1,7 +1,7 @@
 """Fetch past HEFS issues from CNRFC's dated archive into a hindcast folder that has the data folder's
 layout, so score.py scores them unchanged. CNRFC keeps every 12Z issue since January 2014 as one zip per
-river group. Only the start of each zip is read: the issue day and the 15 days after it, which hold the 14 leads score.py
-scores.
+river group. Only the start of each zip is read: the issue day and the 15 days after it, which hold the
+14 leads score.py scores.
 
 A hindcast is not the live record. It is kept in its own folder, never pooled with the data folder and
 never sent to the data branch.
