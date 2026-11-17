@@ -14,7 +14,7 @@ import csv
 import gzip
 import sys
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from archive import INFLOW, fetch
@@ -121,7 +121,7 @@ def score(out: Path) -> list[dict]:
 
 
 def main(out: Path) -> int:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     failed = update_obs(out, now)
     rows = score(out)
     path = out / "scores" / "inflow_daily.csv"

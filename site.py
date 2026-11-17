@@ -12,12 +12,12 @@ import gzip
 import json
 import sys
 from collections import defaultdict
-from datetime import date, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from ar_scale import IVT_AR_THRESHOLD, classify_ar
 from points import GAUGES, RESERVOIRS
-from score import LEADS, NOISY, SCORED, read_hefs, read_obs, read_quantiles
+from score import LEADS, NOISY, SCORED, read_hefs, read_obs
 
 MIN_PAIRS = 20  # a scorecard cell with fewer forecast-days is shown but flagged thin
 OBS_DAYS = 120
@@ -97,7 +97,7 @@ def weather_latest(out: Path, lid: str) -> dict | None:
                   "flag": {2: "warn", 3: "warn", 4: "danger", 5: "danger"}.get(ar.category)})
 
     precip = {m: [None if x is None else x / 25.4 for x in v[start:]] for m, v in w["precip_mm"].items()}  # inches
-    totals = {m: sum(v) for m, v in precip.items() if None not in v}  # a model that stops short has no total
+    totals = {m: sum(x for x in v if x is not None) for m, v in precip.items() if None not in v}  # a model that stops short has no total
     if totals:
         lead = next(iter(totals))
         tiles.append({"label": f"Precip through {when(times[-1])[:-4]}, {lead}", "value": f"{totals[lead]:.2f} in",
@@ -198,6 +198,6 @@ def build(out: Path, now: datetime) -> dict:
 
 
 if __name__ == "__main__":
-    idx = build(Path(sys.argv[1] if len(sys.argv) > 1 else "data"), datetime.now(timezone.utc))
+    idx = build(Path(sys.argv[1] if len(sys.argv) > 1 else "data"), datetime.now(UTC))
     print(f"site: {len(idx['points'])} points, record since {idx['record_start']}, {idx['archive_days']} archive days, "
           f"{len(idx['scores']['by_lead'])} scorecard cells")

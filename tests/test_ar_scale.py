@@ -2,7 +2,7 @@
 1250 tier, the demote/promote duration scheme, the inclusive 48 h boundary, the ungraded "Weak AR" cell."""
 
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -73,7 +73,7 @@ def test_exceptional_clipped_at_5():
 
 
 def test_onset_offset_bracket_all_pulses():
-    t0 = datetime(2026, 7, 20, tzinfo=timezone.utc)
+    t0 = datetime(2026, 7, 20, tzinfo=UTC)
     times = [t0 + timedelta(hours=6 * i) for i in range(5)]
     result = classify_ar([100, 300, 100, 300, 100], STEP, valid_times=times)
     assert result.onset_time == times[1]   # first crossing

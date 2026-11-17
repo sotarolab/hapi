@@ -1,19 +1,22 @@
 import gzip
 import importlib.util
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from test_score import test_score_one_forecast_day as make_fixture  # builds obs, a HEFS file and a model forecast in tmp_path
+from test_score import (
+    test_score_one_forecast_day as make_fixture,  # builds obs, a HEFS file and a model forecast in tmp_path
+)
 
 spec = importlib.util.spec_from_file_location("site_builder", Path(__file__).parent.parent / "site.py")
+assert spec is not None and spec.loader is not None
 site = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(site)
 
 
 def test_build_writes_index_and_point_files(tmp_path):
     make_fixture(tmp_path)
-    idx = site.build(tmp_path, datetime(2026, 11, 15, tzinfo=timezone.utc))
+    idx = site.build(tmp_path, datetime(2026, 11, 15, tzinfo=UTC))
     assert idx["record_start"] == "20261114" and idx["archive_days"] == 1
     assert {p["kind"] for p in idx["points"]} == {"reservoir", "gauge"} and len(idx["points"]) == 15 + 12
     fol = json.loads((tmp_path / "site" / "points" / "FOLC1.json").read_text())
@@ -26,7 +29,7 @@ def test_build_writes_index_and_point_files(tmp_path):
     (tmp_path / "live").mkdir()
     (tmp_path / "live" / "GUEC1.json").write_text(json.dumps({"source": "NWS observed at GUEC1", "times": ["2026-11-15T00:00:00Z"],
                                                               "cfs": [204], "stage_ft": [4.5], "alerts": [{"label": "Action", "ft": 29, "cfs": 37700}]}))
-    site.build(tmp_path, datetime(2026, 11, 15, tzinfo=timezone.utc))
+    site.build(tmp_path, datetime(2026, 11, 15, tzinfo=UTC))
     guec = json.loads((tmp_path / "site" / "points" / "GUEC1.json").read_text())
     assert guec["live"]["cfs"] == [204] and "alerts" not in guec["live"] and guec["alerts"][0]["cfs"] == 37700
     assert fol["weather"] is None and guec["weather"] is None  # nothing archived by weather.py

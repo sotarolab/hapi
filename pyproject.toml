@@ -1,0 +1,34 @@
+[project]
+name = "hapi"
+version = "0"
+requires-python = ">=3.11"
+dependencies = []  # the scripts run on bare Python in the hourly job: the referee does not import the player
+
+[dependency-groups]
+dev = ["pytest>=9", "pytest-cov>=6", "ruff>=0.9", "pyright>=1.1.400"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["app", "notebooks", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501", "E731"]  # E731: the scripts use one-line lambdas as local helpers
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+exclude = ["app", "notebooks", "data", ".venv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --tb=short --cov=. --cov-report=term-missing"
+
+[tool.coverage.run]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_also = ["if __name__ == .__main__.:"]
