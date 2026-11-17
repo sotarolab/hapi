@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import json
+import statistics
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,33 +18,42 @@ from pathlib import Path
 from archive import FLOOD, INFLOW, fetch
 
 LIVE_DAYS = 7
+WINDOW = 24  # hours in the reservoir mean
 CDEC_HOURLY = ("https://cdec.water.ca.gov/dynamicapp/req/CSVDataServlet?Stations={sta}&SensorNums=76"
                "&dur_code=H&Start={start:%Y-%m-%d}&End={end:%Y-%m-%d}")
 NWPS = "https://api.water.noaa.gov/nwps/v1/gauges/{lid}"
 CATEGORIES = ["action", "minor", "moderate", "major"]
 
 
-def cdec_hourly(body: bytes) -> tuple[list[str], list[float]]:
-    """(UTC hours, cfs) from CDEC's hourly CSV. CDEC stamps PST all year, so UTC is eight hours later."""
+def cdec_hourly(body: bytes) -> tuple[list[str], list[float | None]]:
+    """(UTC hours, cfs) from CDEC's hourly CSV, a missing hour kept as None so positions are hours.
+    CDEC stamps PST all year, so UTC is eight hours later."""
     times, cfs = [], []
     for r in csv.DictReader(body.decode().splitlines()):
-        if r["VALUE"] == "---":  # CDEC's missing marker
-            continue
         t = datetime.strptime(r["DATE TIME"], "%Y%m%d %H%M") + timedelta(hours=8)
         times.append(t.strftime("%Y-%m-%dT%H:%MZ"))
-        cfs.append(float(r["VALUE"]))
+        cfs.append(None if r["VALUE"] == "---" else float(r["VALUE"]))  # ---: CDEC's missing marker
     return times, cfs
 
 
-def trailing_mean(values: list[float | None], n: int = 24) -> list[float | None]:
-    """Mean of the valid values among the last n, None where fewer than half are valid. CDEC's hourly computed
-    inflow swings between zero and several times the daily mean within a day, so the page shows what the day
-    is converging to."""
-    out = []
+def centred_mean(values: list[float | None], n: int = WINDOW) -> list[float | None]:
+    """Mean of the n values around each position (n/2 before, n/2 from it on), so a day's mean sits at the
+    middle of that day beside the daily observation. None where the window runs off either end of the series
+    or holds fewer than three quarters of its hours."""
+    half = n // 2
+    out: list[float | None] = []
     for i in range(len(values)):
-        window = [v for v in values[max(0, i + 1 - n):i + 1] if v is not None]
-        out.append(None if len(window) < n / 2 else round(sum(window) / len(window)))
+        window = [v for v in values[i - half:i + half] if v is not None] if half <= i <= len(values) - half else []
+        out.append(round(sum(window) / len(window)) if len(window) >= 0.75 * n else None)
     return out
+
+
+def informative(values: list[float | None]) -> bool:
+    """Whether the hourly values say something about the flow: at least two days of them, varying less than
+    their mean. CDEC computes hourly inflow from storage change and release, and at a small reservoir one
+    storage step is several times the inflow; a 24-hour mean of that is still noise."""
+    valid = [v for v in values if v is not None]
+    return len(valid) >= 2 * WINDOW and statistics.pstdev(valid) < abs(statistics.fmean(valid))
 
 
 def nwps_observed(d: dict) -> dict:
@@ -99,8 +109,14 @@ def update_live(out: Path, now: datetime) -> int:
             continue
         times, cfs = cdec_hourly(body)
         hourly = [None if v == 0 else v for v in cfs]  # CDEC writes 0 for an hour a component sensor missed
-        live = {"source": f"CDEC {sta}, 24-h mean of hourly computed inflow", "times": times, "cfs": trailing_mean(hourly), "stage_ft": None}
-        (d / f"{lid}.json").write_text(json.dumps(since(live, start.strftime("%Y-%m-%dT%H:%MZ"))))
+        path = d / f"{lid}.json"
+        if not informative(hourly):
+            path.unlink(missing_ok=True)
+            print(f"left out {lid}: CDEC {sta} hourly inflow is missing or varies more than its mean")
+            continue
+        live = {"source": f"CDEC {sta}, 24-h mean of hourly computed inflow, centred on the hour",
+                "times": times, "cfs": centred_mean(hourly), "stage_ft": None}
+        path.write_text(json.dumps(since(live, start.strftime("%Y-%m-%dT%H:%MZ"))))
     for lid in FLOOD:
         bodies = [fetch(NWPS.format(lid=lid) + suffix) for suffix in ("/stageflow/observed", "", "/ratings")]
         try:
