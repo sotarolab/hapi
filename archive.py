@@ -1,5 +1,7 @@
-"""Archive the official forecasts that cannot be backfilled: CNRFC HEFS ensembles and the
-NWS official stage/flow forecast. Observations (USGS, CDEC) can be fetched later, so they are not here.
+"""Archive the official forecasts as they are issued: CNRFC HEFS ensembles and the NWS official stage/flow
+forecast. CNRFC also keeps the 12Z HEFS issues since January 2014 as dated zips, which retro.py reads for a
+hindcast. Whether the NWS official forecast can be fetched later was not checked, so it is saved here.
+Observations (USGS, CDEC) can be fetched later, so they are not here.
 
 Run: python archive.py [out_dir]   (default: data/)
 """

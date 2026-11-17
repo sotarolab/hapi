@@ -5,7 +5,7 @@ Live at https://sotarolab.github.io/hapi/. How it fits together: [docs/ARCHITECT
 A public, timestamped record of river-flow and reservoir-inflow forecasts for California,
 scored against the official forecasts.
 
-Step 1: `archive.py` saves the official products that cannot be backfilled:
+Step 1: `archive.py` saves the official products as they are issued:
 the CNRFC HEFS ensembles (17 reservoir inflow points, 12 flood gauges) and the NWS official
 forecast for the flood gauges. The workflow runs it every 6 hours and commits to the `data` branch.
 
@@ -19,6 +19,12 @@ is printed. Model forecasts dropped under `data/forecasts/<model>/<point>/<issue
 `date,lead,q05,...`) are scored the same way, as an ensemble of their quantiles. Flood gauges are archived
 but not yet scored.
 
+Hindcast: CNRFC keeps every 12Z HEFS issue since January 2014 as dated zips. `retro.py` fetches the issue day
+and the 14 leads of each one for the reservoir points into a separate folder with the same layout, and
+`score.py` scores that folder unchanged. A hindcast is weaker evidence than the live record, because nobody
+can show when a hindcast forecast was made. The folder is not read by the page and never goes to the `data`
+branch.
+
 First model product: `quantile_inflow_v1_s0`, a regional quantile LSTM on Open-Meteo forcing from the
 `caudal` package, issuing 14-day forecasts for the 11 reservoirs since 2026-11-15. Its retrospective
 skill on water years 2016-2025 is in that package; the live score is this ledger.
@@ -26,6 +32,7 @@ skill on water years 2016-2025 is in that package; the live score is this ledger
     python archive.py          # writes data/<product>/<point>/<UTC time>.gz, skipping unchanged files
     python weather.py          # writes data/weather/<point>/<UTC time>.gz: the weather forecast at each point
     python score.py            # refreshes data/cdec_inflow/<station>.csv, writes data/scores/inflow_daily.csv
+    python retro.py hindcast 2015-10-01 2025-09-30 && python score.py hindcast   # past HEFS issues, scored apart
     python -m pytest tests
     jupyter lab notebooks/ledger.ipynb   # observed inflow with the newest HEFS fan per reservoir, and the score table
 
