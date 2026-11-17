@@ -24,6 +24,18 @@ def test_read_hefs_keys_a_row_by_the_day_before_its_stamp(tmp_path):
     assert score.read_hefs(p) == {date(2026, 11, 13): [500.0], date(2026, 11, 14): [1500.0]}
 
 
+def test_missing_marker_is_not_a_forecast(tmp_path):
+    d = tmp_path / "hefs_daily" / "FOLC1"
+    d.mkdir(parents=True)
+    body = b"GMT,FOLC1,FOLC1\n,SQME,SQME\n2026-11-14 12:00:00,0.5,0.5\n2026-11-15 12:00:00,-999,1.5\n"
+    (d / "20261114T123000Z.gz").write_bytes(gzip.compress(body + b"2026-11-16 12:00:00,-999,-999\n"))
+    fc = score.read_hefs(d / "20261114T123000Z.gz")
+    assert fc == {date(2026, 11, 13): [500.0, 500.0], date(2026, 11, 14): [1500.0]}  # the marker and its day are gone
+    (d / "20261115T123000Z.gz").write_bytes(gzip.compress(b"GMT,FOLC1\n,SQME\n2026-11-15 12:00:00,-999\n"))
+    issues = [issue for _, issue, _ in score.forecasts(tmp_path, "FOLC1")]
+    assert issues == [date(2026, 11, 14)]  # the file with no analysis is left out whole
+
+
 def test_score_one_forecast_day(tmp_path):
     obs = [(f"{yr}-11-15", 800 + yr % 7 * 10) for yr in range(2000, 2026)]  # climatology years
     obs += [("2026-11-13", 500), ("2026-11-15", 1000)]  # persistence source, truth
