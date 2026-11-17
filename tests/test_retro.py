@@ -35,11 +35,16 @@ def test_head_rejects_a_page_that_is_not_a_zip():
     assert retro.head(io.BytesIO(b"<!DOCTYPE html><html><body>404 Not Found</body></html>"), retro.ROWS) is None
 
 
+def test_head_gives_nothing_for_a_file_shorter_than_asked():
+    assert retro.head(io.BytesIO(zipped(group_file(["FOLC1"], 5))), retro.ROWS) is None
+
+
 def test_split_finds_a_point_under_either_name():
     old = retro.split(group_file(["ORDC1", "ORDC1", "NBBC1L"], 3), ["ORDC1", "NBBC1"])
     new = retro.split(group_file(["ORDC1F", "ORDC1F", "NBBC1L"], 3), ["ORDC1", "NBBC1"])
     assert list(old) == list(new) == ["ORDC1"]
     assert old["ORDC1"].splitlines()[2] == b"2019-02-26 12:00:00,1.000,1.919"
+    assert retro.split(group_file(["ORDC1", "ORDC1F"], 3), ["ORDC1"]) == {}  # both names: not known which to take
 
 
 def run(tmp_path, calls: list) -> int:

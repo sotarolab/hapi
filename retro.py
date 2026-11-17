@@ -47,17 +47,21 @@ def head(stream: BinaryIO, lines: int) -> list[str] | None:
     inflate, text = zlib.decompressobj(-15), b""
     while text.count(b"\n") < lines and (chunk := stream.read(32768)):
         text += inflate.decompress(chunk)
+    if text.count(b"\n") < lines:  # a short or cut file: the last line may be half a row
+        return None
     return text.decode().splitlines()[:lines]
 
 
 def split(rows: list[str], lids: list[str]) -> dict[str, bytes]:
     """{lid: that point's columns as a file in the layout archive.py saves}. CNRFC names a point with or
-    without a trailing F inside the group files (ORDC1 in 2014, ORDC1F since 2015)."""
+    without a trailing F inside the group files (ORDC1 in 2014, ORDC1F since 2015). A file with both names
+    for one point gives nothing for it: which of the two the live file holds is then unknown."""
     cells = [r.split(",") for r in rows]
     out = {}
     for lid in lids:
-        cols = [i for i, c in enumerate(cells[0]) if c in (lid, lid + "F")]
-        if cols:
+        plain, with_f = ([i for i, c in enumerate(cells[0]) if c == name] for name in (lid, lid + "F"))
+        cols = plain or with_f
+        if cols and not (plain and with_f):
             out[lid] = "\n".join(",".join([r[0], *(r[i] for i in cols)]) for r in cells).encode() + b"\n"
     return out
 
