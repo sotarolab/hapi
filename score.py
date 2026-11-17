@@ -21,8 +21,10 @@ from archive import INFLOW, fetch
 
 NOISY = {"WSDC1", "NDPC1", "CEGC1", "INVC1"}  # archived, not scored: negative computed inflows at low flow
 SCORED = {lid: sta for lid, sta in INFLOW.items() if sta and lid not in NOISY}
-CDEC = ("https://cdec.water.ca.gov/dynamicapp/req/CSVDataServlet?Stations={sta}&SensorNums=76"
-        "&dur_code=D&Start=1980-10-01&End={end:%Y-%m-%d}")
+CDEC = (
+    "https://cdec.water.ca.gov/dynamicapp/req/CSVDataServlet?Stations={sta}&SensorNums=76"
+    "&dur_code=D&Start=1980-10-01&End={end:%Y-%m-%d}"
+)
 LEADS = range(1, 15)
 MIN_CLIM_YEARS = 10
 
@@ -110,13 +112,19 @@ def score(out: Path) -> list[dict]:
                 if y is None or y < 0 or last is None or last < 0 or day not in fc or len(clim) < MIN_CLIM_YEARS:
                     continue
                 m = sorted(fc[day])
-                rows.append({
-                    "product": product, "lid": lid, "issue": issue, "lead": lead, "obs_cfs": y,
-                    "crps": round(crps(m, y), 1),
-                    "crps_persistence": round(abs(last - y), 1),
-                    "crps_climatology": round(crps(clim, y), 1),
-                    "in90": int(m[round(0.05 * (len(m) - 1))] <= y <= m[round(0.95 * (len(m) - 1))]),
-                })
+                rows.append(
+                    {
+                        "product": product,
+                        "lid": lid,
+                        "issue": issue,
+                        "lead": lead,
+                        "obs_cfs": y,
+                        "crps": round(crps(m, y), 1),
+                        "crps_persistence": round(abs(last - y), 1),
+                        "crps_climatology": round(crps(clim, y), 1),
+                        "in90": int(m[round(0.05 * (len(m) - 1))] <= y <= m[round(0.95 * (len(m) - 1))]),
+                    }
+                )
     return rows
 
 
@@ -138,8 +146,10 @@ def main(out: Path) -> int:
             r = [x for x in rows if x["lead"] == lead and x["product"] == product]
             if r:
                 mean = lambda k: sum(x[k] for x in r) / len(r)
-                print(f"{product:22s} {lead:4d} {len(r):5d} {mean('crps'):5.0f} {mean('crps_persistence'):10.0f} "
-                      f"{mean('crps_climatology'):10.0f} {mean('in90'):6.2f}")
+                print(
+                    f"{product:22s} {lead:4d} {len(r):5d} {mean('crps'):5.0f} {mean('crps_persistence'):10.0f} "
+                    f"{mean('crps_climatology'):10.0f} {mean('in90'):6.2f}"
+                )
     return 1 if failed > len(SCORED) // 2 else 0
 
 

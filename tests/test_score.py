@@ -23,15 +23,20 @@ def test_score_one_forecast_day(tmp_path):
     (tmp_path / "cdec_inflow").mkdir()
     (tmp_path / "cdec_inflow" / "FOL.csv").write_text("date,cfs\n" + "".join(f"{d},{v}\n" for d, v in obs))
     members = [0.9 + 0.01 * i for i in range(21)]  # kcfs, 0.9..1.1 -> median 1000 cfs
-    body = ("GMT" + ",FOLC1" * 21 + "\n" + ",SQME" * 21 + "\n2026-11-14 12:00:00" + ",0.5" * 21 + "\n"
-            "2026-11-15 12:00:00," + ",".join(map(str, members)) + "\n2026-11-16 12:00:00" + ",0.7" * 21 + "\n")
+    body = (
+        "GMT" + ",FOLC1" * 21 + "\n" + ",SQME" * 21 + "\n2026-11-14 12:00:00" + ",0.5" * 21 + "\n"
+        "2026-11-15 12:00:00," + ",".join(map(str, members)) + "\n2026-11-16 12:00:00" + ",0.7" * 21 + "\n"
+    )
     (tmp_path / "hefs_daily" / "FOLC1").mkdir(parents=True)
     (tmp_path / "hefs_daily" / "FOLC1" / "20261114T123000Z.gz").write_bytes(gzip.compress(body.encode()))
     d = tmp_path / "forecasts" / "embalse_v1" / "FOLC1"
     d.mkdir(parents=True)
     (d / "2026-11-14.csv").write_text("date,lead,q05,q50,q95\n2026-11-15,1,900,1000,1100\n2026-11-16,2,500,600,700\n")
     rows = score.score(tmp_path)
-    assert [(r["product"], r["lead"]) for r in rows] == [("hefs", 1), ("embalse_v1", 1)]  # lead 2 has no observation yet
+    assert [(r["product"], r["lead"]) for r in rows] == [
+        ("hefs", 1),
+        ("embalse_v1", 1),
+    ]  # lead 2 has no observation yet
     r = rows[0]
     assert (r["lid"], r["lead"], r["obs_cfs"], r["crps_persistence"], r["in90"]) == ("FOLC1", 1, 1000, 500, 1)
     assert r["crps"] == round(score.crps([x * 1000 for x in members], 1000), 1) < 50
