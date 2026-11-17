@@ -139,6 +139,9 @@ follows it beside HEFS, with no change to the code, and `site.py` draws it besid
 
 - **History size.** Every run that changes something is committed, hourly, and git keeps all of it. If the
   `data` branch nears 1 GB, the raw archives move to file storage and git keeps their checksums.
+- **A HEFS day is not a Pacific day.** A daily HEFS row stamped 12Z is the mean of the 24 hours before it,
+  04:00 to 04:00 Pacific standard time. `score.py` pairs it with the day before its stamp, the Pacific day
+  CDEC's value describes, which holds 20 of those 24 hours. Lead 1 is the day after the issue.
 - **Observations are revised.** CDEC edits past values, so a score can change after the fact. Forecasts never do.
 - **CDEC's hourly inflow is computed** from storage and release and is noisy; the page shows a 24-hour mean
   and treats zero hours as missing, which is what CDEC writes when a component sensor is down.
