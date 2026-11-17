@@ -2,7 +2,9 @@ import { useEffect, useRef } from 'react'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 import type { Weather, WeatherChart } from '../api'
-import { css, rgba, sharedCursor, timeAxis, type Shared } from './PointChart'
+import { readout } from '../lib/readout'
+import { wheelZoom, zoomCursor } from '../lib/zoom'
+import { css, rgba, whenUTC } from './PointChart'
 
 /** The weather site.py wrote for the point, in two pieces: its tiles, which join the point's tile strip, and
  *  one plot per entry of `charts`, each a panel of the forecast stack. Nothing here knows about weather:
@@ -23,10 +25,10 @@ export function WeatherLegend({ chart }: { chart: WeatherChart }) {
 }
 
 /** One chart of the panel: a line per series, the optional hourly bars hanging from the top, the optional
- *  reference level and the present hour as dashed lines. Hovering reads every series at the cursor. */
-export function WeatherPlot({ times, chart, height = 150, shared }: { times: string[]; chart: WeatherChart; height?: number; shared?: Shared }) {
+ *  reference level and the present hour as dashed lines, on its own time axis over every hour it has. A click
+ *  pins a box with every series' value at that time; a dragged range or the wheel zooms, a double-click returns. */
+export function WeatherPlot({ times, chart, height = 150 }: { times: string[]; chart: WeatherChart; height?: number }) {
   const el = useRef<HTMLDivElement>(null)
-  const tip = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const host = el.current
@@ -38,6 +40,7 @@ export function WeatherPlot({ times, chart, height = 150, shared }: { times: str
     // An hour's amount belongs to the hour that ends at its time, so each bar sits left of its x.
     if (chart.bars) series.push({ label: chart.bars.label, scale: 'bars', width: 0, fill: rgba(css(chart.bars.colour), 0.4), points: { show: false },
       paths: uPlot.paths.bars!({ size: [1], gap: 1, align: -1 }) })
+    const entries = all.map((s, k) => ({ series: k + 1, label: s.label, colour: css(s.colour), format: (v: number) => `${fmt(v)} ${chart.unit}` }))
     const mark = chart.line?.value
     const axis = { stroke: css('--dim'), grid: { stroke: css('--rule'), width: 1 }, ticks: { show: false }, font: '11px ui-monospace, Menlo, monospace' }
     const dashed = (u: uPlot, colour: string, x0: number, y0: number, x1: number, y1: number) => {
@@ -48,7 +51,8 @@ export function WeatherPlot({ times, chart, height = 150, shared }: { times: str
       width: host.clientWidth, height,
       tzDate: (t) => uPlot.tzDate(new Date(t * 1e3), 'UTC'),
       legend: { show: false },
-      cursor: sharedCursor(shared),
+      cursor: zoomCursor,
+      plugins: [wheelZoom(), readout({ when: whenUTC, entries: () => entries, hover: false })],
       scales: {
         x: { time: true },
         // The reference level stays in view even when every value is far below it.
@@ -56,7 +60,7 @@ export function WeatherPlot({ times, chart, height = 150, shared }: { times: str
         // The bars run downward from the top and take the upper third, clear of the lines.
         ...(chart.bars ? { bars: { dir: -1 as const, range: (_u: uPlot, _min: number | null, max: number | null) => [0, max ? max * 3 : 1] as [number, number] } } : {}),
       },
-      axes: [timeAxis(axis, shared), { ...axis, size: 56, values: (_u, vals) => vals.map(fmt) }],
+      axes: [axis, { ...axis, size: 56, values: (_u, vals) => vals.map(fmt) }],
       series,
       hooks: {
         draw: [(u) => {
@@ -75,27 +79,12 @@ export function WeatherPlot({ times, chart, height = 150, shared }: { times: str
           }
           u.ctx.restore()
         }],
-        setCursor: [(u) => {
-          const t = tip.current
-          const i = u.cursor.idx
-          if (!t) return
-          if (i == null) { t.style.display = 'none'; return }
-          const rows = all.map((s, k) => ({ s, v: u.data[k + 1][i] })).filter((r) => r.v != null)
-          if (!rows.length) { t.style.display = 'none'; return }
-          const when = new Date(u.data[0][i] * 1000).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', timeZone: 'UTC' })
-          t.innerHTML = `<b>${when} UTC</b>` + rows.map((r) => `<span><i style="background:${css(r.s.colour)}"></i>${r.s.label}<em>${fmt(r.v as number)} ${chart.unit}</em></span>`).join('')
-          t.style.display = 'block'
-          const x = u.cursor.left ?? 0
-          t.style.left = `${x + (x > host.clientWidth / 2 ? -t.offsetWidth - 14 : 14)}px`
-          t.style.top = '8px'
-        }],
       },
     }, data as uPlot.AlignedData, host)
-    if (shared) u.setScale('x', { min: shared.xMin, max: shared.xMax })
     const ro = new ResizeObserver(() => u.setSize({ width: host.clientWidth, height }))
     ro.observe(host)
     return () => { ro.disconnect(); u.destroy() }
-  }, [times, chart, height, shared?.xMin, shared?.xMax, shared?.syncKey, shared?.axis])
+  }, [times, chart, height])
 
-  return <div className="chart"><div ref={el} /><div className="tip" ref={tip} /></div>
+  return <div className="chart" ref={el} />
 }

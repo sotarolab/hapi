@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type PointData } from './api'
 import { LabPane } from './components/LabPane'
-import { MODEL_VARS, PointChart, category, latest, type Shared } from './components/PointChart'
+import { MODEL_VARS, PointChart, category, latest } from './components/PointChart'
 import { PointMap } from './components/PointMap'
 import { SkyPane } from './components/SatellitePane'
 import { WeatherLegend, WeatherPlot, WeatherTiles } from './components/WeatherPane'
@@ -12,9 +12,8 @@ const TABS = [{ id: 'forecast', label: 'Forecast' }, { id: 'sky', label: 'Satell
 type Tab = (typeof TABS)[number]['id']
 type View = { tab: Tab; lid: string | null; stage: boolean }
 const REFRESH_MS = 10 * 60_000
-/** How far back the forecast stack looks; 0 is the whole record. It always runs 14 days ahead. */
+/** How far back the flow chart opens; 0 is the whole record. It runs to the end of the forecasts. */
 const BACK = [{ days: 10, label: '10 d' }, { days: 30, label: '30 d' }, { days: 0, label: 'all' }]
-const AHEAD_DAYS = 14
 /** The weather panels in view are a choice the browser keeps. */
 const PANELS_KEY = 'hapi.panels'
 const DEFAULT_PANELS = ['precip', 'ivt', 'temperature']
@@ -86,11 +85,12 @@ export default function App() {
 }
 
 /** The detail column for one point: its header and toggles, a strip of flow tiles and one of weather tiles,
- *  and the forecast stack: flow (or stage at a gauge) above the chosen weather panels, all the same width
- *  on one time axis, with cursors that move together. */
+ *  and the forecast stack: flow (or stage at a gauge) above the chosen weather panels, all the same width,
+ *  each with its own time axis, zoom and readout. */
 function PointDetail({ point, stage: wantStage, onStage }: { point: PointData; stage: boolean; onStage: (v: boolean) => void }) {
   const [log, setLog] = useState(true)
   const [back, setBack] = useState(BACK[0].days)
+  const [opened, setOpened] = useState(0)  // counts presses of a look-back button: each reopens the flow chart, undoing a zoom
   const [panels, setPanels] = useState(readPanels)
   const toggle = (id: string) => setPanels((prev) => {
     const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -99,10 +99,7 @@ function PointDetail({ point, stage: wantStage, onStage }: { point: PointData; s
   })
   const charts = point.weather?.charts ?? []
   const shown = charts.filter((c) => panels.includes(c.id))
-  const hour = Math.floor(Date.now() / 3_600_000) * 3600
-  const first = point.obs[0]?.[0] ?? point.live?.times[0]
-  const xMin = back ? hour - back * 86400 : first ? Date.parse(first) / 1000 : hour - 30 * 86400
-  const shared = (axis: boolean): Shared => ({ xMin, xMax: hour + AHEAD_DAYS * 86400, syncKey: 'stack', axis })
+  const since = back ? Math.floor(Date.now() / 3_600_000) * 3600 - back * 86400 : undefined
   const models = Object.entries(point.models)
   const last = point.obs.at(-1)
   const alerts = point.alerts ?? []
@@ -140,7 +137,7 @@ function PointDetail({ point, stage: wantStage, onStage }: { point: PointData; s
           <h2>Forecast</h2>
           <span className="row">
             {charts.length > 0 && <div className="chips">{charts.map((c) => <button key={c.id} className={panels.includes(c.id) ? 'on' : ''} onClick={() => toggle(c.id)}>{c.label}</button>)}</div>}
-            <div className="seg">{BACK.map((b) => <button key={b.days} className={b.days === back ? 'on' : ''} onClick={() => setBack(b.days)}>{b.label}</button>)}</div>
+            <div className="seg">{BACK.map((b) => <button key={b.days} className={b.days === back ? 'on' : ''} onClick={() => { setBack(b.days); setOpened((n) => n + 1) }}>{b.label}</button>)}</div>
           </span>
         </div>
         <div className="panel-t">
@@ -154,11 +151,11 @@ function PointDetail({ point, stage: wantStage, onStage }: { point: PointData; s
             <span><i style={{ background: 'var(--hot)' }} />now</span>
           </div>
         </div>
-        <PointChart point={point} log={log} view={stage ? 'stage' : 'flow'} shared={shared(shown.length === 0)} />
-        {shown.map((c, i) => (
+        <PointChart key={opened} point={point} log={log} view={stage ? 'stage' : 'flow'} since={since} />
+        {shown.map((c) => (
           <div key={c.id}>
             <div className="panel-t"><span className="eyebrow">{c.label}, {c.unit}</span><WeatherLegend chart={c} /></div>
-            <WeatherPlot times={point.weather!.times} chart={c} shared={shared(i === shown.length - 1)} />
+            <WeatherPlot times={point.weather!.times} chart={c} />
           </div>
         ))}
         {point.note && <p className="note">{point.note}</p>}
