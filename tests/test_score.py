@@ -61,3 +61,16 @@ def test_score_one_forecast_day(tmp_path):
     assert (r["lid"], r["lead"], r["obs_cfs"], r["crps_persistence"], r["in90"]) == ("FOLC1", 1, 1000, 500, 1)
     assert r["crps"] == round(score.crps([x * 1000 for x in members], 1000), 1) < 50
     assert rows[1]["crps"] == round(score.crps([900, 1000, 1100], 1000), 1) and rows[1]["in90"] == 1
+
+
+def test_score_skips_bad_file_and_keeps_good_ones(tmp_path, capsys):
+    test_score_one_forecast_day(tmp_path)  # obs, one HEFS file and one good model file
+    d = tmp_path / "forecasts" / "crossed_v1" / "FOLC1"
+    d.mkdir(parents=True)
+    (d / "2026-11-14.csv").write_text("date,lead,q05,q50,q95\n2026-11-15,1,1000,900,1100\n")
+    rows = score.score(tmp_path)
+    assert {r["product"] for r in rows} == {"hefs", "embalse_v1"}
+    assert (
+        "BAD FORECAST forecasts/crossed_v1/FOLC1/2026-11-14.csv: row 1: the quantiles decrease"
+        in capsys.readouterr().err
+    )
