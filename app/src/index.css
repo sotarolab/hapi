@@ -28,20 +28,26 @@ header.top .sub { font-size: 12px; color: var(--dim); }
 .tab.active { color: var(--ink); background: var(--panel2); border-color: var(--rule); }
 /* Forecast: a sticky rail with the picker and the map, and a column of cards that scrolls beside it. */
 .shell { display: grid; grid-template-columns: minmax(360px, 34%) minmax(0, 1fr); gap: 16px; padding-top: 16px; align-items: start; }
-.rail { position: sticky; top: 66px; height: calc(100vh - 82px); min-height: 420px; display: flex; flex-direction: column; gap: 10px; }
-.rail .map { flex: 1; min-height: 0; border-radius: var(--radius); overflow: hidden; }
+.rail { position: sticky; top: 66px; display: flex; flex-direction: column; gap: 10px; }
+.rail .map { height: clamp(380px, 62vh, 640px); border-radius: var(--radius); overflow: hidden; }
+.radar-play { background: var(--panel2); color: var(--ink); border: 1px solid var(--rule); border-radius: 8px; font: 600 11px var(--mono); padding: 6px 10px; cursor: pointer; }
 .rail .picker select { width: 100%; max-width: none; }
 .detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .card { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius); padding: 14px 16px; min-width: 0; margin: 0; }
 .card-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 0 0 10px; flex-wrap: wrap; }
 .card-h h2 { font: 600 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin: 0; }
-.cards2 { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-@media (max-width: 1250px) { .cards2 { grid-template-columns: 1fr; } }
+/* The forecast stack: each panel has a title row with its legend; the toggles above pick the panels. */
+.panel-t { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 12px 0 2px; }
+.panel-t .eyebrow { color: var(--dim); }
+.panel-t .legend { margin-top: 0; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips button { background: transparent; border: 1px solid var(--rule); border-radius: 999px; color: var(--dim); font: 600 11px/1 var(--sans); padding: 6px 10px; cursor: pointer; }
+.chips button.on { background: var(--panel2); color: var(--ink); border-color: var(--faint); }
 @media (max-width: 1000px) {
   .shell { grid-template-columns: 1fr; }
-  .rail { position: static; height: auto; min-height: 0; }
-  .rail .map { flex: none; height: 340px; }
+  .rail { position: static; }
+  .rail .map { height: 340px; }
   header.top .sub { display: none; }
 }
 /* Lab: the same cards in one centred column. */
@@ -103,7 +109,7 @@ table.grid td.pick:hover { text-decoration: underline; }
 .map .leaflet-control-layers label { display: flex; align-items: center; margin: 2px 0; white-space: nowrap; cursor: pointer; }
 .map .leaflet-control-layers label > span { display: inline-flex; align-items: center; gap: 6px; }
 .map .leaflet-control-layers-selector { margin: 0; accent-color: var(--hot); }
-.sat { background: #000; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; display: flex; justify-content: center; }
+.sat { background: #000; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; width: fit-content; max-width: 100%; margin: 0 auto; }
 .sat img { max-width: 100%; height: auto; display: block; }
 .pill { display: inline-block; font: 600 10px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; padding: 3px 6px; border: 1px solid var(--rule); color: var(--dim); }
 .pill.warn { color: var(--warn); border-color: var(--warn); }

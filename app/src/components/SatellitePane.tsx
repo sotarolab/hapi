@@ -28,9 +28,9 @@ export function nearestRadar(lat: number, lon: number) {
 const STAR = 'https://cdn.star.nesdis.noaa.gov/GOES18/ABI'
 const RIDGE = 'https://radar.weather.gov/ridge/standard'
 
-/** One loop at a time, chosen from the GOES bands and the nearest radar. The app's refresh re-renders the
- *  card, and the five-minute stamp in the URL then fetches the newest loop. */
-export function SkyCard({ point }: { point: Point }) {
+/** The Satellite tab: one loop at a time for the selected point, chosen from the GOES bands and the nearest
+ *  radar. The app's refresh re-renders the pane, and the five-minute stamp in the URL fetches the newest loop. */
+export function SkyPane({ point }: { point: Point }) {
   const [band, setBand] = useState<Band>('GEOCOLOR')
   const [wide, setWide] = useState(false)
   const radar = nearestRadar(point.lat, point.lon)
@@ -40,19 +40,19 @@ export function SkyCard({ point }: { point: Point }) {
     : wide ? `${STAR}/CONUS/${band}/GOES18-CONUS-${band}-625x375.gif` : `${STAR}/SECTOR/psw/${band}/GOES18-PSW-${band}-600x600.gif`
   const info = BANDS.find((b) => b.id === band)!
   return (
-    <section className="card">
-      <div className="card-h">
-        <h2>Sky</h2>
+    <section className="panel">
+      <div className="panel-h">
+        <h2>Satellite and radar, {point.name}</h2>
         <span className="row">
-          <label className="picker"><select value={band} onChange={(e) => setBand(e.target.value as Band)}>{BANDS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}</select></label>
+          <div className="seg">{BANDS.map((b) => <button key={b.id} className={b.id === band ? 'on' : ''} onClick={() => setBand(b.id)}>{b.label}</button>)}</div>
           <div className="seg">
-            <button className={wide ? '' : 'on'} onClick={() => setWide(false)}>{isRadar ? radar.id : 'Southwest'}</button>
-            <button className={wide ? 'on' : ''} onClick={() => setWide(true)}>{isRadar ? 'CONUS' : 'Pacific'}</button>
+            <button className={wide ? '' : 'on'} onClick={() => setWide(false)}>{isRadar ? `${radar.name} (${radar.id})` : 'Pacific Southwest'}</button>
+            <button className={wide ? 'on' : ''} onClick={() => setWide(true)}>{isRadar ? 'CONUS' : 'West and Pacific'}</button>
           </div>
         </span>
       </div>
+      <p className="note" style={{ marginTop: 0 }}>{isRadar ? 'NWS radar' : 'GOES-18'} · {info.note}. Updated every few minutes.</p>
       <div className="sat"><img src={`${src}?t=${stamp()}`} alt={`${isRadar ? `${radar.name} radar` : `GOES-18 ${info.label}`} loop`} /></div>
-      <p className="note">{isRadar ? `NWS radar, ${radar.name}` : 'GOES-18'} · {info.note}. Updated every few minutes.</p>
     </section>
   )
 }

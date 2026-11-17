@@ -34,7 +34,21 @@ const alertColour = (a: Alert) => css(a.label === 'Action' || a.label === 'Minor
  *  fan (5-95 and 25-75 with its median), each model's fan the same way and the NWS official forecast as a
  *  dashed line. Stage (gauges): the NWS observed and official stage in feet with the flood categories as
  *  dashed levels, the way the NWS hydrograph shows them. Hovering reads the lines at the cursor. */
-export function PointChart({ point, log, view = 'flow', height = 340 }: { point: PointData; log: boolean; view?: 'flow' | 'stage'; height?: number }) {
+export interface Shared {
+  /** The time window every panel of the stack shows, in epoch seconds. */
+  xMin: number
+  xMax: number
+  /** Panels with the same key move their cursors together. */
+  syncKey: string
+  /** Whether this panel draws the time labels; only the bottom one of a stack does. */
+  axis: boolean
+}
+/** What a panel of the stack adds to a uPlot: no drag zoom (it would break the alignment), a synced cursor,
+ *  and time labels only where asked. */
+export const sharedCursor = (s?: Shared) => ({ y: false, points: { size: 6 }, drag: { x: false, y: false }, ...(s ? { sync: { key: s.syncKey } } : {}) })
+export const timeAxis = (base: uPlot.Axis, s?: Shared): uPlot.Axis => (s && !s.axis ? { ...base, size: 6, values: (_u, vals) => vals.map(() => '') } : base)
+
+export function PointChart({ point, log, view = 'flow', height = 300, shared }: { point: PointData; log: boolean; view?: 'flow' | 'stage'; height?: number; shared?: Shared }) {
   const el = useRef<HTMLDivElement>(null)
   const tip = useRef<HTMLDivElement>(null)
 
@@ -115,7 +129,7 @@ export function PointChart({ point, log, view = 'flow', height = 340 }: { point:
       width: host.clientWidth, height,
       tzDate: (t) => uPlot.tzDate(new Date(t * 1e3), 'UTC'),
       legend: { show: false },
-      cursor: { y: false, points: { size: 6 } },
+      cursor: sharedCursor(shared),
       scales: {
         x: { time: true },
         // The categories stay in view even when the river is far below them.
@@ -123,7 +137,7 @@ export function PointChart({ point, log, view = 'flow', height = 340 }: { point:
           uPlot.rangeNum(min ?? 0, Math.max(max ?? 0, ...levels.map((a) => a.ft)), 0.1, true) } : {}) },
       },
       axes: [
-        { stroke: css('--dim'), grid: { stroke: css('--rule'), width: 1 }, ticks: { show: false }, font: '11px ui-monospace, Menlo, monospace' },
+        timeAxis({ stroke: css('--dim'), grid: { stroke: css('--rule'), width: 1 }, ticks: { show: false }, font: '11px ui-monospace, Menlo, monospace' }, shared),
         { stroke: css('--dim'), grid: { stroke: css('--rule'), width: 1 }, ticks: { show: false }, size: 56, font: '11px ui-monospace, Menlo, monospace',
           values: (_u, vals) => vals.map((v) => (stage ? String(v) : fmtFlow(v))) },
       ],
@@ -144,6 +158,12 @@ export function PointChart({ point, log, view = 'flow', height = 340 }: { point:
             u.ctx.beginPath(); u.ctx.moveTo(left, y); u.ctx.lineTo(left + width, y); u.ctx.stroke()
             u.ctx.fillText(`${a.label} ${a.ft} ft`, left + width - 4 * devicePixelRatio, y - 2 * devicePixelRatio)
           }
+          const now = Date.now() / 1000  // the present hour, as on the weather panels of the stack
+          if (shared && now >= (u.scales.x.min ?? Infinity) && now <= (u.scales.x.max ?? -Infinity)) {
+            const x = u.valToPos(now, 'x', true)
+            u.ctx.strokeStyle = css('--hot')
+            u.ctx.beginPath(); u.ctx.moveTo(x, top); u.ctx.lineTo(x, top + h); u.ctx.stroke()
+          }
           u.ctx.restore()
         }],
         setCursor: [(u) => {
@@ -162,13 +182,14 @@ export function PointChart({ point, log, view = 'flow', height = 340 }: { point:
         }],
       },
     }, data as uPlot.AlignedData, host)
-    // Flow opens on the last 30 observed days and the whole forecast; the full record stays reachable by zooming out.
+    // In a stack every panel shows the same window; alone, flow opens on the last 30 observed days and the forecast.
     const first = point.hefs?.dates[0] ?? Object.values(point.models)[0]?.dates[0]
-    if (!stage && first && x.length) u.setScale('x', { min: Math.max(x[0], noon(first) - 30 * 86400), max: x[x.length - 1] })
+    if (shared) u.setScale('x', { min: shared.xMin, max: shared.xMax })
+    else if (!stage && first && x.length) u.setScale('x', { min: Math.max(x[0], noon(first) - 30 * 86400), max: x[x.length - 1] })
     const ro = new ResizeObserver(() => u.setSize({ width: host.clientWidth, height }))
     ro.observe(host)
     return () => { ro.disconnect(); u.destroy() }
-  }, [point, log, view, height])
+  }, [point, log, view, height, shared?.xMin, shared?.xMax, shared?.syncKey, shared?.axis])
 
   return <div className="chart"><div ref={el} /><div className="tip" ref={tip} /></div>
 }
