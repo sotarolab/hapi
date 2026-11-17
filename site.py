@@ -12,7 +12,7 @@ import gzip
 import json
 import sys
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from ar_scale import IVT_AR_THRESHOLD, classify_ar
@@ -22,6 +22,8 @@ from score import LEADS, NOISY, SCORED, read_hefs, read_obs
 
 MIN_PAIRS = 20  # a scorecard cell with fewer forecast-days is shown but flagged thin
 OBS_DAYS = 120
+WEATHER_PAST_DAYS = 7
+SOIL_COLOURS = ["--cool", "--ml", "--warn"]  # soil layers, in the order the files list them
 WEATHER_COLOURS = {
     "GFS": "--cool",
     "ECMWF": "--ml",
@@ -88,28 +90,61 @@ def official_latest(out: Path, lid: str) -> dict | None:
     }
 
 
+def weather_window(out: Path, lid: str) -> tuple[Path, dict] | None:
+    """(the newest archived file, the merged weather) from every file of the last WEATHER_PAST_DAYS days. Each
+    hour takes the value of the newest file that has one, so past hours come from the run just before them
+    and future hours from the newest run. The merged dict has a file's shape, with IVT under its model."""
+    files = sorted((out / "weather" / lid).glob("*.gz")) if (out / "weather" / lid).is_dir() else []
+    if not files:
+        return None
+    since = datetime.strptime(files[-1].stem, "%Y%m%dT%H%M%SZ") - timedelta(days=WEATHER_PAST_DAYS)
+    hours: dict[str, dict[tuple[str, str], float | None]] = {}
+    keys: dict[tuple[str, str], None] = {}  # (variable, model), in the order the newest files list them
+    for p in reversed([f for f in files if f.stem >= f"{since:%Y%m%dT%H%M%SZ}"]):
+        w = json.loads(gzip.decompress(p.read_bytes()))
+        columns = {("ivt", "GFS"): w["ivt"]}
+        columns.update({(var, m): v for var, group in w.items() if isinstance(group, dict) for m, v in group.items()})
+        keys.update(dict.fromkeys(columns))
+        for i, t in enumerate(w["times"]):
+            cell = hours.setdefault(t, {})
+            for k, v in columns.items():
+                if cell.get(k) is None:  # files run newest first: an hour keeps the newest value it was given
+                    cell[k] = v[i]
+    times = sorted(t for t in hours if t >= f"{since:%Y-%m-%dT%H:00}")
+    merged: dict = {"times": times}
+    for var, m in keys:
+        merged.setdefault(var, {})[m] = [hours[t].get((var, m)) for t in times]
+    return files[-1], merged
+
+
 def weather_latest(out: Path, lid: str) -> dict | None:
     """The weather panel for a point, ready to draw: tiles and chart series with their labels, units and
     colours (names of the page's CSS tokens). The page draws whatever is here, so changing what it says or
-    shows is an edit to this function. Built from the newest file weather.py archived, from its issue hour on."""
-    p = newest(out / "weather" / lid, ".gz")
-    if p is None:
+    shows is an edit to this function. The charts cover the past week and the forecast (weather_window);
+    the tiles, the AR scale and the running totals start at the newest file's issue hour."""
+    found = weather_window(out, lid)
+    if found is None:
         return None
-    w = json.loads(gzip.decompress(p.read_bytes()))
+    p, w = found
+    times = w["times"]
     issue_hour = f"{p.stem[:4]}-{p.stem[4:6]}-{p.stem[6:8]}T{p.stem[9:11]}:00"  # the stem is the UTC fetch time
-    start = next((i for i, t in enumerate(w["times"]) if t >= issue_hour), None)
+    start = next((i for i, t in enumerate(times) if t >= issue_hour), None)
     if start is None:  # the newest file is older than its own forecast: nothing current to show
         return None
-    times = w["times"][start:]
+    ahead = times[start:]
     when = lambda t: f"{datetime.fromisoformat(t):%b} {int(t[8:10])} {t[11:13]}Z"
+    convert = lambda var, f: {m: [None if x is None else f(x) for x in v] for m, v in w.get(var, {}).items()}
+    lines = lambda group: [
+        {"label": m, "colour": WEATHER_COLOURS.get(m, "--official"), "values": v} for m, v in group.items()
+    ]
     tiles = []
 
-    ivt = w["ivt"][start:]
-    ar = classify_ar([v or 0 for v in ivt], 1.0, times)  # an hour with no IVT counts as no transport
+    ivt = w["ivt"]["GFS"]
+    ar = classify_ar([v or 0 for v in ivt[start:]], 1.0, ahead)  # an hour with no IVT counts as no transport
     if ar.onset_time is None:
         note = f"peak IVT {ar.max_ivt:.0f} kg/m/s, below {IVT_AR_THRESHOLD:.0f}"
     else:
-        arrival = "under way" if ar.onset_time == times[0] else f"arrives {when(ar.onset_time)}"
+        arrival = "under way" if ar.onset_time == ahead[0] else f"arrives {when(ar.onset_time)}"
         note = (
             f"peak {ar.max_ivt:.0f} kg/m/s · {arrival} · {ar.duration_hours:.0f} h above "
             f"{IVT_AR_THRESHOLD:.0f} · {ar.impact}"
@@ -123,10 +158,9 @@ def weather_latest(out: Path, lid: str) -> dict | None:
         }
     )
 
-    precip = {m: [None if x is None else x / 25.4 for x in v[start:]] for m, v in w["precip_mm"].items()}  # inches
-    totals = {
-        m: sum(x for x in v if x is not None) for m, v in precip.items() if None not in v
-    }  # a model that stops short has no total
+    precip = convert("precip_mm", lambda x: x / 25.4)  # inches
+    # a model that stops short has no total
+    totals = {m: sum(x for x in v[start:] if x is not None) for m, v in precip.items() if None not in v[start:]}
     if totals:
         lead = next(iter(totals))
         tiles.append(
@@ -138,11 +172,9 @@ def weather_latest(out: Path, lid: str) -> dict | None:
             }
         )
 
-    freezing = {
-        m: [None if x is None else round(x * 3.28084, -1) for x in v[start:]] for m, v in w["freezing_m"].items()
-    }  # feet
+    freezing = convert("freezing_m", lambda x: round(x * 3.28084, -1))  # feet
     for m, v in freezing.items():
-        soon = [x for x in v[:72] if x is not None]
+        soon = [x for x in v[start : start + 72] if x is not None]
         if soon:
             tiles.append(
                 {
@@ -154,12 +186,22 @@ def weather_latest(out: Path, lid: str) -> dict | None:
             )
             break
 
-    def running(xs: list) -> list:  # running total; the line ends where the model does
-        total, out_ = 0.0, []
-        for x in xs:
+    def running(xs: list) -> list:  # running total from the issue hour; the line ends where the model does
+        total, out_ = 0.0, [None] * start
+        for x in xs[start:]:
             total = None if x is None or total is None else total + x
             out_.append(None if total is None else round(total, 2))
         return out_
+
+    def bars(group: dict, digits: int) -> dict:  # the first model's hourly amounts, hanging from the top
+        return {
+            "bars": {
+                "label": f"{m}, hourly",
+                "colour": WEATHER_COLOURS[m],
+                "values": [None if x is None else round(x, digits) for x in v],
+            }
+            for m, v in list(group.items())[:1]
+        }
 
     charts = [
         {
@@ -171,16 +213,7 @@ def weather_latest(out: Path, lid: str) -> dict | None:
                 {"label": f"{m}, running total", "colour": WEATHER_COLOURS[m], "values": running(v)}
                 for m, v in precip.items()
             ],
-            **(
-                {
-                    "bars": {
-                        "label": f"{m}, hourly",
-                        "colour": WEATHER_COLOURS[m],
-                        "values": [None if x is None else round(x, 3) for x in v],
-                    }
-                    for m, v in list(precip.items())[:1]
-                }
-            ),
+            **bars(precip, 3),
         },
         {
             "id": "ivt",
@@ -190,12 +223,42 @@ def weather_latest(out: Path, lid: str) -> dict | None:
             "line": {"value": IVT_AR_THRESHOLD, "label": f"AR conditions, {IVT_AR_THRESHOLD:.0f} kg/m/s"},
             "series": [{"label": "GFS IVT", "colour": WEATHER_COLOURS["GFS"], "values": ivt}],
         },
+        {"id": "freezing", "label": "Freezing level", "unit": "ft", "digits": 0, "series": lines(freezing)},
         {
-            "id": "freezing",
-            "label": "Freezing level",
-            "unit": "ft",
+            "id": "temperature",
+            "label": "Temperature",
+            "unit": "°F",
             "digits": 0,
-            "series": [{"label": m, "colour": WEATHER_COLOURS[m], "values": v} for m, v in freezing.items()],
+            "line": {"value": 32, "label": "freezing, 32 °F"},
+            "series": lines(convert("temperature_c", lambda x: round(x * 9 / 5 + 32, 1))),
+        },
+        {
+            "id": "snow",
+            "label": "Snow",
+            "unit": "in",
+            "digits": 1,
+            "series": [
+                {**s, "label": f"{s['label']}, depth"}
+                for s in lines(convert("snow_depth_m", lambda x: round(x * 39.3701, 1)))
+            ],
+            **bars(convert("snowfall_cm", lambda x: x / 2.54), 2),
+        },
+        {
+            "id": "soil",
+            "label": "Soil moisture",
+            "unit": "%",
+            "digits": 0,
+            "series": [
+                {"label": m, "colour": SOIL_COLOURS[i % len(SOIL_COLOURS)], "values": v}
+                for i, (m, v) in enumerate(convert("soil_m3m3", lambda x: round(x * 100, 1)).items())
+            ],
+        },
+        {
+            "id": "gusts",
+            "label": "Wind gusts",
+            "unit": "mph",
+            "digits": 0,
+            "series": lines(convert("gust_kmh", lambda x: round(x * 0.621371))),
         },
     ]
     return {
@@ -204,7 +267,8 @@ def weather_latest(out: Path, lid: str) -> dict | None:
         "tiles": tiles,
         "charts": [c for c in charts if c["series"]],
         "note": "Open-Meteo forecasts: GFS, ECMWF IFS, ICON, NBM. IVT from GFS winds and humidity, 1000 to 300 hPa; "
-        f"AR scale after Ralph et al. (2019), on hourly IVT. Hours are UTC; fetched {issue_hour[:10]} {p.stem[9:11]}:{p.stem[11:13]}Z.",
+        "AR scale after Ralph et al. (2019), on hourly IVT. Past hours show each model's newest archived value "
+        f"for that hour. Hours are UTC; fetched {issue_hour[:10]} {p.stem[9:11]}:{p.stem[11:13]}Z.",
     }
 
 

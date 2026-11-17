@@ -33,6 +33,10 @@ def test_derive_keeps_models_with_values_and_computes_ivt():
             **{f"precipitation_{m}": [0.1, 0.2] for m in weather.MODELS},
             "freezing_level_height_gfs_seamless": [2500.0, 2400.0],
             "freezing_level_height_ecmwf_ifs025": [None, None],
+            "temperature_2m_icon_seamless": [1.5, 2.5],
+            "snow_depth_ncep_nbm_conus": [None, None],
+            "soil_moisture_0_to_10cm_gfs_seamless": [0.27, 0.28],
+            "soil_moisture_0_to_7cm_ecmwf_ifs025": [0.36, 0.36],
         }
     }
     column = {
@@ -47,6 +51,8 @@ def test_derive_keeps_models_with_values_and_computes_ivt():
     d = weather.derive(surface, profile)
     assert d["times"] == times and list(d["precip_mm"]) == ["GFS", "ECMWF", "ICON", "NBM"]
     assert d["freezing_m"] == {"GFS": [2500.0, 2400.0]}  # ECMWF has no freezing level and is left out
+    assert d["temperature_c"] == {"ICON": [1.5, 2.5]} and d["snow_depth_m"] == {} and d["gust_kmh"] == {}
+    assert d["soil_m3m3"] == {"GFS 0-10 cm": [0.27, 0.28], "ECMWF 0-7 cm": [0.36, 0.36]}
     assert d["ivt"][0] > 0 and abs(d["ivt"][1] - 2 * d["ivt"][0]) <= 1  # twice the wind, twice the IVT (rounded)
 
 
