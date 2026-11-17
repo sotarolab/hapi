@@ -25,6 +25,47 @@ function weatherOverlays(): Record<string, Overlay> {
   return { 'Radar': radar, 'Satellite visible': goes('conus_vis', 'conus_vis_1km'), 'Satellite infrared': goes('conus_ir', 'conus_ir_4km') }
 }
 
+/** The radar loop: IEM keeps the national mosaic of each of the last 55 minutes in five-minute steps. */
+const RADAR_FRAMES = [50, 45, 40, 35, 30, 25, 20, 15, 10, 5, 0]
+const radarFrame = (minutesAgo: number) =>
+  L.tileLayer(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${minutesAgo ? `-m${String(minutesAgo).padStart(2, '0')}m` : ''}/{z}/{x}/{y}.png?t={t}`, {
+    opacity: 0, attribution: 'IEM NEXRAD', maxNativeZoom: 12, pane: 'wx', t: stamp(),
+  } as L.TileLayerOptions)
+
+/** A button on the map that plays the last 50 minutes of radar in a loop and stops it. Every frame is on
+ *  the map at once, hidden, so the loop only changes opacity; the newest frame is held a little longer. */
+function radarControl(): L.Control {
+  const Control = L.Control.extend({
+    onAdd(map: L.Map) {
+      const button = L.DomUtil.create('button', 'radar-play')
+      let frames: L.TileLayer[] = []
+      let timer: number | undefined
+      const stop = () => {
+        window.clearTimeout(timer)
+        frames.forEach((f) => f.remove())
+        frames = []
+        button.textContent = '▶ Radar loop'
+      }
+      const show = (i: number) => {
+        frames.forEach((f, k) => f.setOpacity(k === i ? 0.7 : 0))
+        const ago = RADAR_FRAMES[i]
+        button.textContent = `■ Radar ${ago ? `−${ago} min` : 'now'}`
+        timer = window.setTimeout(() => show((i + 1) % frames.length), ago ? 450 : 1600)
+      }
+      button.textContent = '▶ Radar loop'
+      L.DomEvent.disableClickPropagation(button)
+      L.DomEvent.on(button, 'click', () => {
+        if (frames.length) return stop()
+        frames = RADAR_FRAMES.map((m) => radarFrame(m).addTo(map))
+        show(0)
+      })
+      map.on('unload', stop)
+      return button
+    },
+  })
+  return new Control({ position: 'bottomleft' })
+}
+
 /** Move an overlay on to the current five-minute frame; a WMS layer redraws itself when its params change,
  *  a tile layer needs the option bumped and a redraw. */
 function refresh(layer: Overlay) {
@@ -35,7 +76,8 @@ function refresh(layer: Overlay) {
 
 /** Every point on one map: reservoirs in blue, flood gauges in orange, the selected one ringed in white.
  *  A click selects; the view is fitted once to the whole set and then left alone. Radar and satellite
- *  overlays can be switched on from the top right corner and advance with the app's refresh (`tick`).
+ *  overlays can be switched on from the top right corner and advance with the app's refresh (`tick`); the
+ *  button at the bottom left plays the last 50 minutes of radar.
  *  The map takes the size of its container. */
 export function PointMap({ points, selected, onSelect, tick = 0 }: { points: Point[]; selected: string | null; onSelect: (lid: string) => void; tick?: number }) {
   const el = useRef<HTMLDivElement>(null)
@@ -53,6 +95,7 @@ export function PointMap({ points, selected, onSelect, tick = 0 }: { points: Poi
     m.createPane('wx').style.zIndex = '350'  // above the basemap tiles (200), below the markers (400)
     overlays.current = weatherOverlays()
     L.control.layers(undefined, overlays.current, { collapsed: true, position: 'topright' }).addTo(m)
+    radarControl().addTo(m)
     map.current = m
     const ro = new ResizeObserver(() => m.invalidateSize())  // the rail sets the height, and it changes with the window
     ro.observe(el.current)

@@ -1,43 +1,34 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 import type { Weather, WeatherChart } from '../api'
-import { css, rgba } from './PointChart'
+import { readout } from '../lib/readout'
+import { wheelZoom, zoomCursor } from '../lib/zoom'
+import { css, rgba, whenUTC } from './PointChart'
 
 /** The weather site.py wrote for the point, in two pieces: its tiles, which join the point's tile strip, and
- *  a card with one chart per entry of `charts` behind a toggle. Nothing here knows about weather: every
- *  label, unit, colour and number comes from the data. */
+ *  one plot per entry of `charts`, each a panel of the forecast stack. Nothing here knows about weather:
+ *  every label, unit, colour and number comes from the data. */
 export function WeatherTiles({ weather }: { weather: Weather }) {
   return <>{weather.tiles.map((t) => <div key={t.label} className={`tile${t.flag ? ` flag--${t.flag}` : ''}`}><span className="eyebrow">{t.label}</span><b className="num">{t.value}</b><p className="note">{t.note}</p></div>)}</>
 }
 
-export function WeatherCard({ weather: w }: { weather: Weather }) {
-  const [id, setId] = useState<string | null>(null)
-  const chart = w.charts.find((c) => c.id === id) ?? w.charts[0]
-  if (!chart) return null
+/** The legend of one weather chart, as the data names it. */
+export function WeatherLegend({ chart }: { chart: WeatherChart }) {
   return (
-    <section className="card">
-      <div className="card-h">
-        <h2>Weather</h2>
-        <div className="seg">{w.charts.map((c) => <button key={c.id} className={c === chart ? 'on' : ''} onClick={() => setId(c.id)}>{c.label}</button>)}</div>
-      </div>
-      <WeatherPlot times={w.times} chart={chart} />
-      <div className="legend">
-        {chart.series.map((s) => <span key={s.label}><i style={{ background: `var(${s.colour})` }} />{s.label}</span>)}
-        {chart.bars && <span><i className="band" style={{ background: `var(${chart.bars.colour})` }} />{chart.bars.label}</span>}
-        {chart.line && <span><i style={{ background: 'var(--warn)' }} />{chart.line.label}</span>}
-        <span><i style={{ background: 'var(--hot)' }} />now</span>
-      </div>
-      <p className="note">{w.note}</p>
-    </section>
+    <div className="legend">
+      {chart.series.map((s) => <span key={s.label}><i style={{ background: `var(${s.colour})` }} />{s.label}</span>)}
+      {chart.bars && <span><i className="band" style={{ background: `var(${chart.bars.colour})` }} />{chart.bars.label}</span>}
+      {chart.line && <span><i style={{ background: 'var(--warn)' }} />{chart.line.label}</span>}
+    </div>
   )
 }
 
 /** One chart of the panel: a line per series, the optional hourly bars hanging from the top, the optional
- *  reference level and the present hour as dashed lines. Hovering reads every series at the cursor. */
-function WeatherPlot({ times, chart, height = 240 }: { times: string[]; chart: WeatherChart; height?: number }) {
+ *  reference level and the present hour as dashed lines, on its own time axis over every hour it has. A click
+ *  pins a box with every series' value at that time; a dragged range or the wheel zooms, a double-click returns. */
+export function WeatherPlot({ times, chart, height = 230 }: { times: string[]; chart: WeatherChart; height?: number }) {
   const el = useRef<HTMLDivElement>(null)
-  const tip = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const host = el.current
@@ -49,6 +40,7 @@ function WeatherPlot({ times, chart, height = 240 }: { times: string[]; chart: W
     // An hour's amount belongs to the hour that ends at its time, so each bar sits left of its x.
     if (chart.bars) series.push({ label: chart.bars.label, scale: 'bars', width: 0, fill: rgba(css(chart.bars.colour), 0.4), points: { show: false },
       paths: uPlot.paths.bars!({ size: [1], gap: 1, align: -1 }) })
+    const entries = all.map((s, k) => ({ series: k + 1, label: s.label, colour: css(s.colour), format: (v: number) => `${fmt(v)} ${chart.unit}` }))
     const mark = chart.line?.value
     const axis = { stroke: css('--dim'), grid: { stroke: css('--rule'), width: 1 }, ticks: { show: false }, font: '11px ui-monospace, Menlo, monospace' }
     const dashed = (u: uPlot, colour: string, x0: number, y0: number, x1: number, y1: number) => {
@@ -59,7 +51,8 @@ function WeatherPlot({ times, chart, height = 240 }: { times: string[]; chart: W
       width: host.clientWidth, height,
       tzDate: (t) => uPlot.tzDate(new Date(t * 1e3), 'UTC'),
       legend: { show: false },
-      cursor: { y: false, points: { size: 6 } },
+      cursor: zoomCursor,
+      plugins: [wheelZoom(), readout({ when: whenUTC, entries: () => entries, hover: false })],
       scales: {
         x: { time: true },
         // The reference level stays in view even when every value is far below it.
@@ -86,20 +79,6 @@ function WeatherPlot({ times, chart, height = 240 }: { times: string[]; chart: W
           }
           u.ctx.restore()
         }],
-        setCursor: [(u) => {
-          const t = tip.current
-          const i = u.cursor.idx
-          if (!t) return
-          if (i == null) { t.style.display = 'none'; return }
-          const rows = all.map((s, k) => ({ s, v: u.data[k + 1][i] })).filter((r) => r.v != null)
-          if (!rows.length) { t.style.display = 'none'; return }
-          const when = new Date(u.data[0][i] * 1000).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', timeZone: 'UTC' })
-          t.innerHTML = `<b>${when} UTC</b>` + rows.map((r) => `<span><i style="background:${css(r.s.colour)}"></i>${r.s.label}<em>${fmt(r.v as number)} ${chart.unit}</em></span>`).join('')
-          t.style.display = 'block'
-          const x = u.cursor.left ?? 0
-          t.style.left = `${x + (x > host.clientWidth / 2 ? -t.offsetWidth - 14 : 14)}px`
-          t.style.top = '8px'
-        }],
       },
     }, data as uPlot.AlignedData, host)
     const ro = new ResizeObserver(() => u.setSize({ width: host.clientWidth, height }))
@@ -107,5 +86,5 @@ function WeatherPlot({ times, chart, height = 240 }: { times: string[]; chart: W
     return () => { ro.disconnect(); u.destroy() }
   }, [times, chart, height])
 
-  return <div className="chart"><div ref={el} /><div className="tip" ref={tip} /></div>
+  return <div className="chart" ref={el} />
 }

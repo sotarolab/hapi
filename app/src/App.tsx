@@ -1,23 +1,34 @@
 import { useEffect, useState } from 'react'
-import { api, type Point, type PointData } from './api'
+import { api, type PointData } from './api'
 import { LabPane } from './components/LabPane'
 import { MODEL_VARS, PointChart, category, latest } from './components/PointChart'
 import { PointMap } from './components/PointMap'
-import { SkyCard } from './components/SatellitePane'
-import { WeatherCard, WeatherTiles } from './components/WeatherPane'
+import { SkyPane } from './components/SatellitePane'
+import { WeatherLegend, WeatherPlot, WeatherTiles } from './components/WeatherPane'
 import { useFetch } from './hooks/useFetch'
 import { dayLabel, fmtFlow, recordDay } from './lib/skill'
 
-const TABS = [{ id: 'forecast', label: 'Forecast' }, { id: 'lab', label: 'Lab' }] as const
+const TABS = [{ id: 'forecast', label: 'Forecast' }, { id: 'sky', label: 'Satellite' }, { id: 'lab', label: 'Lab' }] as const
 type Tab = (typeof TABS)[number]['id']
 type View = { tab: Tab; lid: string | null; stage: boolean }
 const REFRESH_MS = 10 * 60_000
+/** How far back the flow chart opens; 0 is the whole record. It runs to the end of the forecasts. */
+const BACK = [{ days: 10, label: '10 d' }, { days: 30, label: '30 d' }, { days: 0, label: 'all' }]
+/** The weather panels in view are a choice the browser keeps. */
+const PANELS_KEY = 'hapi.panels'
+const DEFAULT_PANELS = ['precip', 'ivt', 'temperature']
+function readPanels(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(PANELS_KEY) ?? 'null')
+    return Array.isArray(v) ? v.map(String) : DEFAULT_PANELS
+  } catch { return DEFAULT_PANELS }
+}
 
-/** The URL hash carries the pane, the point and the chart's view: #lab, #forecast?p=GUEC1, #forecast?p=GUEC1&v=stage. */
+/** The URL hash carries the pane, the point and the chart's view: #lab, #sky?p=GUEC1, #forecast?p=GUEC1&v=stage. */
 function readHash(): View {
   const [raw, query] = location.hash.slice(1).split('?')
   const q = new URLSearchParams(query ?? '')
-  return { tab: raw === 'lab' ? 'lab' : 'forecast', lid: q.get('p'), stage: q.get('v') === 'stage' }
+  return { tab: TABS.find((t) => t.id === raw)?.id ?? 'forecast', lid: q.get('p'), stage: q.get('v') === 'stage' }
 }
 
 export default function App() {
@@ -56,11 +67,12 @@ export default function App() {
           </aside>
           <main className="detail">
             {point.data && here
-              ? <PointDetail point={point.data} here={here} stage={stage} onStage={(v) => setView({ tab, lid, stage: v })} />
+              ? <PointDetail point={point.data} stage={stage} onStage={(v) => setView({ tab, lid, stage: v })} />
               : <p className="note card">{point.error ?? 'Loading…'}</p>}
           </main>
         </div>
       )}
+      {tab === 'sky' && <div className="lab">{here ? <SkyPane point={here} /> : <section className="panel"><p className="note">{index.error ?? 'Loading…'}</p></section>}</div>}
       {tab === 'lab' && <div className="lab">{index.data ? <LabPane index={index.data} onPick={pick} /> : <section className="panel"><p className="note">{index.error ?? 'Loading…'}</p></section>}</div>}
       <footer>
         Archive, observations, forecasts and scores: the <a href="https://github.com/sotarolab/hapi/tree/data">data branch</a> of
@@ -72,10 +84,22 @@ export default function App() {
   )
 }
 
-/** The detail column for one point: its header and toggles, a strip of flow tiles and one of weather tiles, the
- *  chart card, and the weather and sky cards side by side. A gauge can switch its chart to stage. */
-function PointDetail({ point, here, stage: wantStage, onStage }: { point: PointData; here: Point; stage: boolean; onStage: (v: boolean) => void }) {
+/** The detail column for one point: its header and toggles, a strip of flow tiles and one of weather tiles,
+ *  and the forecast stack: flow (or stage at a gauge) above the chosen weather panels, all the same width,
+ *  each with its own time axis, zoom and readout. */
+function PointDetail({ point, stage: wantStage, onStage }: { point: PointData; stage: boolean; onStage: (v: boolean) => void }) {
   const [log, setLog] = useState(true)
+  const [back, setBack] = useState(BACK[0].days)
+  const [opened, setOpened] = useState(0)  // counts presses of a look-back button: each reopens the flow chart, undoing a zoom
+  const [panels, setPanels] = useState(readPanels)
+  const toggle = (id: string) => setPanels((prev) => {
+    const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    try { localStorage.setItem(PANELS_KEY, JSON.stringify(next)) } catch { /* private mode: the choice lasts the visit */ }
+    return next
+  })
+  const charts = point.weather?.charts ?? []
+  const shown = charts.filter((c) => panels.includes(c.id))
+  const since = back ? Math.floor(Date.now() / 3_600_000) * 3600 - back * 86400 : undefined
   const models = Object.entries(point.models)
   const last = point.obs.at(-1)
   const alerts = point.alerts ?? []
@@ -109,21 +133,34 @@ function PointDetail({ point, here, stage: wantStage, onStage }: { point: PointD
       </div>
       {point.weather && <div className="tiles"><WeatherTiles weather={point.weather} /></div>}
       <section className="card">
-        <div className="card-h"><h2>{stage ? 'Stage, ft' : 'Flow, cfs'}</h2></div>
-        <PointChart point={point} log={log} view={stage ? 'stage' : 'flow'} />
-        <div className="legend">
-          <span><i style={{ background: 'var(--obs)' }} />{stage ? 'Observed stage, hourly' : `Observed${point.live ? ', daily and hourly' : ''}`}</span>
-          {!stage && point.hefs && <span><i className="band" style={{ background: 'var(--cool)' }} />HEFS 5-95% / 25-75%, median</span>}
-          {!stage && models.map(([name], i) => <span key={name}><i className="band" style={{ background: `var(${MODEL_VARS[i % MODEL_VARS.length]})` }} />{name} 5-95% / 25-75%, median</span>)}
-          {point.official && <span><i style={{ background: 'var(--official)' }} />NWS official (hourly)</span>}
-          {alerts.length > 0 && <span><i style={{ background: 'var(--warn)' }} />NWS flood categories: {alerts.map((a) => `${a.label.toLowerCase()} ${a.ft} ft`).join(', ')}{stage ? '' : ' (drawn in the stage view)'}</span>}
+        <div className="card-h">
+          <h2>Forecast</h2>
+          <span className="row">
+            {charts.length > 0 && <div className="chips">{charts.map((c) => <button key={c.id} className={panels.includes(c.id) ? 'on' : ''} onClick={() => toggle(c.id)}>{c.label}</button>)}</div>}
+            <div className="seg">{BACK.map((b) => <button key={b.days} className={b.days === back ? 'on' : ''} onClick={() => { setBack(b.days); setOpened((n) => n + 1) }}>{b.label}</button>)}</div>
+          </span>
         </div>
+        <div className="panel-t">
+          <span className="eyebrow">{stage ? 'Stage, ft' : 'Flow, cfs'}</span>
+          <div className="legend">
+            <span><i style={{ background: 'var(--obs)' }} />{stage ? 'Observed stage, hourly' : `Observed${point.live ? ', daily and hourly' : ''}`}</span>
+            {!stage && point.hefs && <span><i className="band" style={{ background: 'var(--cool)' }} />HEFS 5-95% / 25-75%, median</span>}
+            {!stage && models.map(([name], i) => <span key={name}><i className="band" style={{ background: `var(${MODEL_VARS[i % MODEL_VARS.length]})` }} />{name} 5-95% / 25-75%, median</span>)}
+            {point.official && <span><i style={{ background: 'var(--official)' }} />NWS official (hourly)</span>}
+            {alerts.length > 0 && <span><i style={{ background: 'var(--warn)' }} />NWS flood categories: {alerts.map((a) => `${a.label.toLowerCase()} ${a.ft} ft`).join(', ')}{stage ? '' : ' (drawn in the stage view)'}</span>}
+            <span><i style={{ background: 'var(--hot)' }} />now</span>
+          </div>
+        </div>
+        <PointChart key={opened} point={point} log={log} view={stage ? 'stage' : 'flow'} since={since} />
+        {shown.map((c) => (
+          <div key={c.id}>
+            <div className="panel-t"><span className="eyebrow">{c.label}, {c.unit}</span><WeatherLegend chart={c} /></div>
+            <WeatherPlot times={point.weather!.times} chart={c} />
+          </div>
+        ))}
         {point.note && <p className="note">{point.note}</p>}
+        {point.weather && <p className="note">{point.weather.note}</p>}
       </section>
-      <div className="cards2">
-        {point.weather && <WeatherCard weather={point.weather} />}
-        <SkyCard point={here} />
-      </div>
     </>
   )
 }
