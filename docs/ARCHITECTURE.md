@@ -3,14 +3,15 @@
 How hapi is put together and how the data flows through it. Written 2026-11-16; it describes what runs,
 not a plan. The companion package [caudal](https://github.com/sotarolab/caudal) makes the model forecasts.
 
-hapi is the public record. It archives the official river forecasts that cannot be downloaded after the
-fact, receives model forecasts as files, fetches observations and weather, scores every forecast against
-what happened, and serves the result as a static page. It makes no forecasts of its own.
+hapi is the public record. It archives the official river forecasts as they are issued, receives model
+forecasts as files, fetches observations and weather, scores every forecast against what happened, and
+serves the result as a static page. It makes no forecasts of its own.
 
 ## The five rules
 
 **Archive wide, score narrow.** Every product for every point is saved on every run, including points whose
-observations are too noisy to score. What is not saved today cannot be recovered later.
+observations are too noisy to score. CNRFC keeps its own dated copies of the 12Z HEFS issues since January
+2014; whether the NWS official forecast can be recovered later was not checked.
 
 **Never revise.** A forecast file is written once. A corrected model is a new product with a new name.
 
@@ -122,6 +123,7 @@ pane, for instance, draws whatever tiles and series `site.py` wrote, with their 
 | `weather.py` | Open-Meteo fetch, IVT from the pressure levels, the derived file |
 | `ar_scale.py` | The atmospheric river scale of Ralph et al. (2019) on hourly IVT |
 | `score.py` | Observations, fair CRPS, 90% coverage, persistence and climatology baselines, leads 1 to 14 |
+| `retro.py` | Past HEFS issues from CNRFC's dated archive into a hindcast folder that `score.py` scores unchanged |
 | `live.py` | Hourly flow and flood categories, read off the NWS rating curve where NWPS gives only the stage |
 | `site.py` | Everything the page shows, as data |
 | `app/` | Vite, React, Leaflet and uPlot; the map, one chart per point, the panes, the scorecards |
@@ -134,6 +136,17 @@ pane, for instance, draws whatever tiles and series `site.py` wrote, with their 
 Files, not code. A forecast is `forecasts/<model>/<point>/<issue date>.csv` with columns `date`, `lead` and
 one column per quantile (`q05`, `q25`, `q50`, `q75`, `q95`), in cfs. `score.py` scores any product that
 follows it beside HEFS, with no change to the code, and `site.py` draws it beside the HEFS fan.
+
+## The hindcast
+
+`retro.py` reads CNRFC's dated archive (`<YYYYMMDD>12_<group>_hefs_csv_daily.zip`, one zip per river group
+and day, since January 2014) and writes each reservoir point's issue day and 14 leads to
+`<folder>/hefs_daily/<point>/<YYYYMMDD>T120000Z.gz`, the layout `archive.py` saves. It reads only the start
+of each zip, 32 to 128 KB of 1 to 3 MB. `python score.py <folder>` then scores it with the code that scores
+the live record, and a model hindcast under `<folder>/forecasts/` is scored beside it.
+
+The hindcast and the live record are never pooled. A live forecast reached the `data` branch before the day
+it predicts; a hindcast has no such proof. The hindcast folder is ignored by git and the page does not read it.
 
 ## Limits to know about
 
