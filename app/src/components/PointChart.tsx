@@ -30,43 +30,44 @@ export function category(cfs: number | null, alerts: Alert[]): string | null {
 }
 const alertColour = (a: Alert) => css(a.label === 'Action' || a.label === 'Minor' ? '--warn' : '--danger')
 
-/** Observed daily flow with the week's hourly values, the HEFS fan (5-95 and 25-75 with its median), each
- *  model's fan the same way, the NWS official hourly forecast as a dashed line and the NWS flood categories
- *  as dashed levels. Hovering reads the lines at the cursor. */
-export function PointChart({ point, log, height = 360 }: { point: PointData; log: boolean; height?: number }) {
+/** The point's chart in one of two views. Flow: observed daily flow with the week's hourly values, the HEFS
+ *  fan (5-95 and 25-75 with its median), each model's fan the same way and the NWS official forecast as a
+ *  dashed line. Stage (gauges): the NWS observed and official stage in feet with the flood categories as
+ *  dashed levels, the way the NWS hydrograph shows them. Hovering reads the lines at the cursor. */
+export function PointChart({ point, log, view = 'flow', height = 340 }: { point: PointData; log: boolean; view?: 'flow' | 'stage'; height?: number }) {
   const el = useRef<HTMLDivElement>(null)
   const tip = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const host = el.current
     if (!host) return
+    const stage = view === 'stage'
+    const logY = log && !stage
+    const hour = (t: string) => Date.parse(t) / 1000
     const xs = new Set<number>()
-    point.obs.forEach(([d]) => xs.add(noon(d)))
-    point.hefs?.dates.forEach((d) => xs.add(noon(d)))
-    Object.values(point.models).forEach((m) => m.dates.forEach((d) => xs.add(noon(d))))
-    point.official?.times.forEach((t) => xs.add(Date.parse(t) / 1000))
-    point.live?.times.forEach((t) => xs.add(Date.parse(t) / 1000))
+    if (!stage) {
+      point.obs.forEach(([d]) => xs.add(noon(d)))
+      point.hefs?.dates.forEach((d) => xs.add(noon(d)))
+      Object.values(point.models).forEach((m) => m.dates.forEach((d) => xs.add(noon(d))))
+    }
+    point.official?.times.forEach((t) => xs.add(hour(t)))
+    point.live?.times.forEach((t) => xs.add(hour(t)))
     const x = [...xs].sort((a, b) => a - b)
     const at = new Map(x.map((v, i) => [v, i]))
     const col = () => new Array<number | null>(x.length).fill(null)
     const put = (arr: (number | null)[], t: number, v: number | null | undefined) => {
       const i = at.get(t)
-      if (i != null && v != null) arr[i] = log && v < 1 ? null : v
+      if (i != null && v != null) arr[i] = logY && v < 1 ? null : v
     }
-    const obs = col()
-    point.obs.forEach(([d, v]) => put(obs, noon(d), v))
-    const data: (number | null)[][] = [x, obs]
-    const series: uPlot.Series[] = [{}, { label: 'Observed', stroke: css('--obs'), width: 2, spanGaps: true, points: { show: false } }]
+    const data: (number | null)[][] = [x]
+    const series: uPlot.Series[] = [{}]
     const bands: uPlot.Band[] = []
-    const entries: Entry[] = [{ idx: 1, label: 'Observed (CDEC)', colour: css('--obs') }]
-    if (point.live) {
-      const hourly = col()
-      point.live.times.forEach((t, k) => put(hourly, Date.parse(t) / 1000, point.live!.cfs[k]))
-      data.push(hourly)
-      series.push({ label: 'Observed, hourly', stroke: css('--obs'), width: 1, spanGaps: true, points: { show: false } })
-      entries.push({ idx: data.length - 1, label: 'Observed, hourly', colour: css('--obs') })
+    const entries: Entry[] = []
+    const line = (label: string, colour: string, values: (number | null)[], opts: Partial<uPlot.Series> = {}) => {
+      data.push(values)
+      series.push({ label, stroke: colour, width: 2, spanGaps: true, points: { show: false }, ...opts })
+      entries.push({ idx: data.length - 1, label, colour })
     }
-    const levels = (point.alerts ?? []).filter((a) => a.cfs != null && (!log || a.cfs >= 1))
     const edge: uPlot.Series = { stroke: 'transparent', width: 0, spanGaps: true, points: { show: false } }
     const addFan = (label: string, colour: string, dates: string[], qs: number[][]) => {
       const arrs = qs.map(() => col())   // p05, p95, p25, p75, p50
@@ -78,16 +79,38 @@ export function PointChart({ point, log, height = 360 }: { point: PointData; log
       bands.push({ series: [base + 1, base], fill: rgba(colour, 0.14) }, { series: [base + 3, base + 2], fill: rgba(colour, 0.22) })
       entries.push({ idx: base + 4, label: `${label} median`, colour })
     }
-    if (point.hefs) addFan('HEFS', css('--cool'), point.hefs.dates, [point.hefs.p05, point.hefs.p95, point.hefs.p25, point.hefs.p75, point.hefs.p50])
-    Object.entries(point.models).forEach(([name, m], i) =>
-      addFan(name, css(MODEL_VARS[i % MODEL_VARS.length]), m.dates, [m.q05, m.q95, m.q25, m.q75, m.q50]))
-    if (point.official) {
-      const off = col()
-      point.official.times.forEach((t, k) => put(off, Date.parse(t) / 1000, point.official!.flow_cfs[k]))
-      data.push(off)
-      series.push({ label: 'NWS official', stroke: css('--official'), width: 1.5, dash: [5, 4], spanGaps: true, points: { show: false } })
-      entries.push({ idx: data.length - 1, label: 'NWS official', colour: css('--official') })
+    const dashed: Partial<uPlot.Series> = { width: 1.5, dash: [5, 4] }
+    if (stage) {
+      const obs = col()
+      point.live?.times.forEach((t, k) => put(obs, hour(t), point.live!.stage_ft?.[k]))
+      line('Observed stage', css('--obs'), obs)
+      if (point.official) {
+        const off = col()
+        point.official.times.forEach((t, k) => put(off, hour(t), point.official!.stage_ft[k]))
+        line('NWS official', css('--official'), off, dashed)
+      }
+    } else {
+      const obs = col()
+      point.obs.forEach(([d, v]) => put(obs, noon(d), v))
+      line('Observed (CDEC)', css('--obs'), obs)
+      if (point.live) {
+        const hourly = col()
+        point.live.times.forEach((t, k) => put(hourly, hour(t), point.live!.cfs[k]))
+        line('Observed, hourly', rgba(css('--obs'), 0.7), hourly, { width: 1 })  // thinner and dimmer: the daily record leads
+      }
+      if (point.hefs) addFan('HEFS', css('--cool'), point.hefs.dates, [point.hefs.p05, point.hefs.p95, point.hefs.p25, point.hefs.p75, point.hefs.p50])
+      Object.entries(point.models).forEach(([name, m], i) =>
+        addFan(name, css(MODEL_VARS[i % MODEL_VARS.length]), m.dates, [m.q05, m.q95, m.q25, m.q75, m.q50]))
+      if (point.official) {
+        const off = col()
+        point.official.times.forEach((t, k) => put(off, hour(t), point.official!.flow_cfs[k]))
+        line('NWS official', css('--official'), off, dashed)
+      }
     }
+    // The flood categories are stages, so they are drawn in the stage view only.
+    const levels = stage ? point.alerts ?? [] : []
+    const unit = stage ? 'ft' : 'cfs'
+    const fmt = (v: number | null | undefined) => (stage ? (v == null ? '–' : v.toFixed(v < 10 ? 2 : 1)) : fmtFlow(v))
     const u = new uPlot({
       width: host.clientWidth, height,
       tzDate: (t) => uPlot.tzDate(new Date(t * 1e3), 'UTC'),
@@ -95,16 +118,14 @@ export function PointChart({ point, log, height = 360 }: { point: PointData; log
       cursor: { y: false, points: { size: 6 } },
       scales: {
         x: { time: true },
-        // The flood categories stay in view even when the river is far below them.
-        y: { distr: log ? 3 : 1, log: 10, ...(levels.length ? { range: (_u: uPlot, min: number | null, max: number | null) => {
-          const hi = Math.max(max ?? 0, ...levels.map((a) => a.cfs!))
-          return log ? uPlot.rangeLog(min ?? 1, hi, 10, true) : uPlot.rangeNum(min ?? 0, hi, 0.1, true)
-        } } : {}) },
+        // The categories stay in view even when the river is far below them.
+        y: { distr: logY ? 3 : 1, log: 10, ...(levels.length ? { range: (_u: uPlot, min: number | null, max: number | null) =>
+          uPlot.rangeNum(min ?? 0, Math.max(max ?? 0, ...levels.map((a) => a.ft)), 0.1, true) } : {}) },
       },
       axes: [
         { stroke: css('--dim'), grid: { stroke: css('--rule'), width: 1 }, ticks: { show: false }, font: '11px ui-monospace, Menlo, monospace' },
         { stroke: css('--dim'), grid: { stroke: css('--rule'), width: 1 }, ticks: { show: false }, size: 56, font: '11px ui-monospace, Menlo, monospace',
-          values: (_u, vals) => vals.map((v) => fmtFlow(v)) },
+          values: (_u, vals) => vals.map((v) => (stage ? String(v) : fmtFlow(v))) },
       ],
       series, bands,
       hooks: {
@@ -117,7 +138,7 @@ export function PointChart({ point, log, height = 360 }: { point: PointData; log
           u.ctx.textAlign = 'right'
           u.ctx.textBaseline = 'bottom'
           for (const a of levels) {
-            const y = u.valToPos(a.cfs!, 'y', true)
+            const y = u.valToPos(a.ft, 'y', true)
             if (y < top || y > top + h) continue
             u.ctx.strokeStyle = u.ctx.fillStyle = alertColour(a)
             u.ctx.beginPath(); u.ctx.moveTo(left, y); u.ctx.lineTo(left + width, y); u.ctx.stroke()
@@ -133,7 +154,7 @@ export function PointChart({ point, log, height = 360 }: { point: PointData; log
           const rows = entries.map((e) => ({ e, v: u.data[e.idx][i] })).filter((r) => r.v != null)
           if (!rows.length) { t.style.display = 'none'; return }
           const when = new Date(u.data[0][i] * 1000).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', timeZone: 'UTC' })
-          t.innerHTML = `<b>${when} UTC</b>` + rows.map((r) => `<span><i style="background:${r.e.colour}"></i>${r.e.label}<em>${fmtFlow(r.v)} cfs</em></span>`).join('')
+          t.innerHTML = `<b>${when} UTC</b>` + rows.map((r) => `<span><i style="background:${r.e.colour}"></i>${r.e.label}<em>${fmt(r.v)} ${unit}</em></span>`).join('')
           t.style.display = 'block'
           const left = u.cursor.left ?? 0
           t.style.left = `${left + (left > host.clientWidth / 2 ? -t.offsetWidth - 14 : 14)}px`
@@ -141,13 +162,13 @@ export function PointChart({ point, log, height = 360 }: { point: PointData; log
         }],
       },
     }, data as uPlot.AlignedData, host)
-    // Open on the last 30 observed days and the whole forecast; the full record stays reachable by zooming out.
+    // Flow opens on the last 30 observed days and the whole forecast; the full record stays reachable by zooming out.
     const first = point.hefs?.dates[0] ?? Object.values(point.models)[0]?.dates[0]
-    if (first && x.length) u.setScale('x', { min: Math.max(x[0], noon(first) - 30 * 86400), max: x[x.length - 1] })
+    if (!stage && first && x.length) u.setScale('x', { min: Math.max(x[0], noon(first) - 30 * 86400), max: x[x.length - 1] })
     const ro = new ResizeObserver(() => u.setSize({ width: host.clientWidth, height }))
     ro.observe(host)
     return () => { ro.disconnect(); u.destroy() }
-  }, [point, log, height])
+  }, [point, log, view, height])
 
   return <div className="chart"><div ref={el} /><div className="tip" ref={tip} /></div>
 }
