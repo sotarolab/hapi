@@ -1,34 +1,33 @@
 import { useEffect, useRef, useState } from 'react'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
-import type { PointData, WeatherChart } from '../api'
+import type { Weather, WeatherChart } from '../api'
 import { css, rgba } from './PointChart'
 
-/** The weather panel site.py wrote for the point: its tiles, then one chart per entry of `charts` behind a
- *  toggle. Nothing here knows about weather: every label, unit, colour and number comes from the data. */
-export function WeatherPane({ point }: { point: PointData }) {
+/** The weather site.py wrote for the point, in two pieces: its tiles, which join the point's tile strip, and
+ *  a card with one chart per entry of `charts` behind a toggle. Nothing here knows about weather: every
+ *  label, unit, colour and number comes from the data. */
+export function WeatherTiles({ weather }: { weather: Weather }) {
+  return <>{weather.tiles.map((t) => <div key={t.label} className={`tile${t.flag ? ` flag--${t.flag}` : ''}`}><span className="eyebrow">{t.label}</span><b className="num">{t.value}</b><p className="note">{t.note}</p></div>)}</>
+}
+
+export function WeatherCard({ weather: w }: { weather: Weather }) {
   const [id, setId] = useState<string | null>(null)
-  const w = point.weather
-  if (!w) return null
   const chart = w.charts.find((c) => c.id === id) ?? w.charts[0]
+  if (!chart) return null
   return (
-    <section className="panel">
-      <div className="panel-h">
-        <h2>Weather at {point.name}</h2>
+    <section className="card">
+      <div className="card-h">
+        <h2>Weather</h2>
         <div className="seg">{w.charts.map((c) => <button key={c.id} className={c === chart ? 'on' : ''} onClick={() => setId(c.id)}>{c.label}</button>)}</div>
       </div>
-      <div className="tiles wide">
-        {w.tiles.map((t) => <div key={t.label} className={`tile${t.flag ? ` flag--${t.flag}` : ''}`}><span className="eyebrow">{t.label}</span><b className="num">{t.value}</b><p className="note">{t.note}</p></div>)}
+      <WeatherPlot times={w.times} chart={chart} />
+      <div className="legend">
+        {chart.series.map((s) => <span key={s.label}><i style={{ background: `var(${s.colour})` }} />{s.label}</span>)}
+        {chart.bars && <span><i className="band" style={{ background: `var(${chart.bars.colour})` }} />{chart.bars.label}</span>}
+        {chart.line && <span><i style={{ background: 'var(--warn)' }} />{chart.line.label}</span>}
+        <span><i style={{ background: 'var(--hot)' }} />now</span>
       </div>
-      {chart && <WeatherPlot times={w.times} chart={chart} />}
-      {chart && (
-        <div className="legend">
-          {chart.series.map((s) => <span key={s.label}><i style={{ background: `var(${s.colour})` }} />{s.label}</span>)}
-          {chart.bars && <span><i className="band" style={{ background: `var(${chart.bars.colour})` }} />{chart.bars.label}</span>}
-          {chart.line && <span><i style={{ background: 'var(--warn)' }} />{chart.line.label}</span>}
-          <span><i style={{ background: 'var(--hot)' }} />now</span>
-        </div>
-      )}
       <p className="note">{w.note}</p>
     </section>
   )
@@ -36,7 +35,7 @@ export function WeatherPane({ point }: { point: PointData }) {
 
 /** One chart of the panel: a line per series, the optional hourly bars hanging from the top, the optional
  *  reference level and the present hour as dashed lines. Hovering reads every series at the cursor. */
-function WeatherPlot({ times, chart, height = 260 }: { times: string[]; chart: WeatherChart; height?: number }) {
+function WeatherPlot({ times, chart, height = 240 }: { times: string[]; chart: WeatherChart; height?: number }) {
   const el = useRef<HTMLDivElement>(null)
   const tip = useRef<HTMLDivElement>(null)
 

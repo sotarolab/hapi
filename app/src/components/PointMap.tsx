@@ -35,8 +35,9 @@ function refresh(layer: Overlay) {
 
 /** Every point on one map: reservoirs in blue, flood gauges in orange, the selected one ringed in white.
  *  A click selects; the view is fitted once to the whole set and then left alone. Radar and satellite
- *  overlays can be switched on from the top right corner and advance with the app's refresh (`tick`). */
-export function PointMap({ points, selected, onSelect, tick = 0, height = 560 }: { points: Point[]; selected: string | null; onSelect: (lid: string) => void; tick?: number; height?: number }) {
+ *  overlays can be switched on from the top right corner and advance with the app's refresh (`tick`).
+ *  The map takes the size of its container. */
+export function PointMap({ points, selected, onSelect, tick = 0 }: { points: Point[]; selected: string | null; onSelect: (lid: string) => void; tick?: number }) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<L.Map | null>(null)
   const markers = useRef<Map<string, L.CircleMarker>>(new Map())
@@ -53,7 +54,9 @@ export function PointMap({ points, selected, onSelect, tick = 0, height = 560 }:
     overlays.current = weatherOverlays()
     L.control.layers(undefined, overlays.current, { collapsed: true, position: 'topright' }).addTo(m)
     map.current = m
-    return () => { m.remove(); map.current = null; overlays.current = null }
+    const ro = new ResizeObserver(() => m.invalidateSize())  // the rail sets the height, and it changes with the window
+    ro.observe(el.current)
+    return () => { ro.disconnect(); m.remove(); map.current = null; overlays.current = null }
   }, [])
 
   useEffect(() => { Object.values(overlays.current ?? {}).forEach(refresh) }, [tick])
@@ -85,5 +88,5 @@ export function PointMap({ points, selected, onSelect, tick = 0, height = 560 }:
     })
   }, [selected, points])
 
-  return <div className="map" ref={el} style={{ height }} />
+  return <div className="map" ref={el} />
 }
