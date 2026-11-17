@@ -57,9 +57,9 @@ def run(tmp_path, calls: list) -> int:
 
 def test_written_file_is_read_by_the_scorer(tmp_path):
     assert run(tmp_path, []) == 0
-    fc = score.read_hefs(retro.path(tmp_path, "FOLC1", DAY))
-    assert min(fc) == DAY and len(fc) == 2 + max(score.LEADS)  # the issue day, the leads, one day more
-    assert fc[DAY] == [1000.0, 1919.0, 1838.0]  # kcfs in the file, cfs for the scorer
+    [(product, issue, fc)] = score.forecasts(tmp_path, "FOLC1")
+    assert (product, issue, len(fc)) == ("hefs", DAY, 2 + max(score.LEADS))  # the issue day, the leads, one day more
+    assert fc[min(fc)] == [1000.0, 1919.0, 1838.0]  # kcfs in the file, cfs for the scorer
 
 
 def test_issue_days_already_saved_are_not_fetched_again(tmp_path):
