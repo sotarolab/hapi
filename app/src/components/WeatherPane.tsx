@@ -27,7 +27,7 @@ export function WeatherLegend({ chart }: { chart: WeatherChart }) {
 /** One chart of the panel: a line per series, the optional hourly bars hanging from the top, the optional
  *  reference level and the present hour as dashed lines, on its own time axis over every hour it has. A click
  *  pins a box with every series' value at that time; a dragged range or the wheel zooms, a double-click returns. */
-export function WeatherPlot({ times, chart, height = 150 }: { times: string[]; chart: WeatherChart; height?: number }) {
+export function WeatherPlot({ times, chart, height = 230 }: { times: string[]; chart: WeatherChart; height?: number }) {
   const el = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
