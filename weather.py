@@ -1,5 +1,6 @@
 """Archive the weather forecast at every point the site shows: hourly precipitation and freezing level from
-four models, and integrated vapor transport (IVT) computed from GFS winds and humidity on pressure levels.
+four models, temperature, snowfall, snow depth, wind gusts and soil moisture where a model serves them, and
+integrated vapor transport (IVT) computed from GFS winds and humidity on pressure levels.
 Source: Open-Meteo (no key). One derived file per point and run, data/weather/<point>/<UTC time>.gz;
 site.py turns the newest into the page's weather panel and the atmospheric river scale.
 
@@ -25,7 +26,21 @@ GRAVITY = 9.81
 FRESH_HOURS = 5  # Open-Meteo refreshes each 6 h cycle; the archive job runs hourly for the observed flow
 
 API = "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&forecast_days=7&timezone=UTC"
-SURFACE = API + "&hourly=precipitation,freezing_level_height&models=" + ",".join(MODELS)
+# variable -> the key it is archived under, with its unit. Soil moisture comes in layers that differ by model.
+SURFACE_VARS = {
+    "precipitation": "precip_mm",
+    "freezing_level_height": "freezing_m",
+    "temperature_2m": "temperature_c",
+    "snowfall": "snowfall_cm",
+    "snow_depth": "snow_depth_m",
+    "wind_gusts_10m": "gust_kmh",
+}
+SOIL_LAYERS = {
+    "soil_moisture_0_to_10cm": "0-10 cm",
+    "soil_moisture_10_to_40cm": "10-40 cm",
+    "soil_moisture_0_to_7cm": "0-7 cm",
+}
+SURFACE = API + "&hourly=" + ",".join([*SURFACE_VARS, *SOIL_LAYERS]) + "&models=" + ",".join(MODELS)
 PROFILE = (
     API
     + "&wind_speed_unit=ms&models="
@@ -54,21 +69,26 @@ def ivt(profile: list[tuple]) -> float | None:
 
 
 def derive(surface: dict, profile: dict) -> dict:
-    """The two Open-Meteo answers reduced to what is archived: hourly times (UTC), precipitation (mm) and
-    freezing level (m) per model, and IVT (kg/m/s). A model with no values for a variable is left out."""
+    """The two Open-Meteo answers reduced to what is archived: hourly times (UTC), each surface variable per
+    model under its key in SURFACE_VARS, soil moisture (m3/m3) per model and layer, and IVT (kg/m/s). A model
+    with no values for a variable is left out."""
     s, p = surface["hourly"], profile["hourly"]
     if s["time"] != p["time"]:
         raise ValueError("surface and profile times differ")
-    by_model = lambda var: {
-        name: s[f"{var}_{m}"] for m, name in MODELS.items() if any(v is not None for v in s.get(f"{var}_{m}", []))
-    }
+    has = lambda key: any(v is not None for v in s.get(key, []))
+    by_model = lambda var: {name: s[f"{var}_{m}"] for m, name in MODELS.items() if has(f"{var}_{m}")}
     values = [
         ivt([(lev, *(p[f"{v}_{lev}hPa"][i] for v in LEVEL_VARS)) for lev in LEVELS]) for i in range(len(p["time"]))
     ]
     return {
         "times": s["time"],
-        "precip_mm": by_model("precipitation"),
-        "freezing_m": by_model("freezing_level_height"),
+        **{key: by_model(var) for var, key in SURFACE_VARS.items()},
+        "soil_m3m3": {
+            f"{name} {layer}": s[f"{var}_{m}"]
+            for var, layer in SOIL_LAYERS.items()
+            for m, name in MODELS.items()
+            if has(f"{var}_{m}")
+        },
         "ivt": [None if v is None else round(v) for v in values],
     }
 

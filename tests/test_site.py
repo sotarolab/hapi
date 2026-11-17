@@ -57,9 +57,7 @@ def test_weather_panel_is_built_from_the_issue_hour(tmp_path):
     d.mkdir(parents=True)
     (d / "20261116T063700Z.gz").write_bytes(gzip.compress(json.dumps(w).encode()))
     panel = site.weather_latest(tmp_path, "FOLC1")
-    assert (
-        panel["times"][0] == "2026-11-16T06:00" and len(panel["times"]) == 90
-    )  # the six hours before issue are dropped
+    assert panel["times"][0] == "2026-11-16T00:00" and len(panel["times"]) == 96  # the charts keep every archived hour
     ar, precip, freezing = panel["tiles"]
     assert ar["value"] == "CAT 2: Moderate" and ar["flag"] == "warn"
     assert "peak 600 kg/m/s · arrives Nov 16 12Z · 30 h above 250" in ar["note"]
@@ -77,6 +75,51 @@ def test_weather_panel_is_built_from_the_issue_hour(tmp_path):
         and "fetched 2026-11-16 06:37Z" in panel["note"]
     )
     assert charts["precip"]["series"][0]["values"][-1] == 9.0 and charts["precip"]["series"][1]["values"][-1] is None
+    assert charts["precip"]["series"][0]["values"][:7] == [None] * 6 + [
+        0.1
+    ]  # the running total starts at the issue hour
     assert charts["precip"]["bars"]["label"] == "GFS, hourly"
     (d / "20261125T003700Z.gz").write_bytes(gzip.compress(json.dumps(w).encode()))
     assert site.weather_latest(tmp_path, "FOLC1") is None  # a file fetched after its last forecast hour shows nothing
+
+
+def test_weather_stitches_the_newest_value_per_hour(tmp_path):
+    day = lambda d: [f"2026-11-{d + h // 24:02d}T{h % 24:02d}:00" for h in range(48)]
+    old = {
+        "times": day(16),
+        "ivt": [100] * 48,
+        "precip_mm": {"GFS": [25.4] * 48},
+    }  # a file from before the new variables
+    new = {
+        "times": day(17),
+        "ivt": [200] * 48,
+        "precip_mm": {"GFS": [50.8] * 48},
+        "temperature_c": {"GFS": [0.0] * 48},
+        "snow_depth_m": {"GFS": [0.0254] * 48},
+        "snowfall_cm": {"GFS": [2.54] * 48},
+        "soil_m3m3": {"GFS 0-10 cm": [0.25] * 48},
+        "gust_kmh": {"GFS": [16.0934] * 48},
+    }
+    d = tmp_path / "weather" / "FOLC1"
+    d.mkdir(parents=True)
+    (d / "20261116T003700Z.gz").write_bytes(gzip.compress(json.dumps(old).encode()))
+    (d / "20261117T003700Z.gz").write_bytes(gzip.compress(json.dumps(new).encode()))
+    panel = site.weather_latest(tmp_path, "FOLC1")
+    charts = {c["id"]: c for c in panel["charts"]}
+    assert len(panel["times"]) == 72 and list(charts) == ["precip", "ivt", "temperature", "snow", "soil", "gusts"]
+    ivt = charts["ivt"]["series"][0]["values"]
+    assert ivt[0] == 100 and ivt[24] == 200  # Nov 16 from the older file, Nov 17 on from the newer
+    assert (
+        charts["precip"]["bars"]["values"][23:25] == [1.0, 2.0] and charts["precip"]["series"][0]["values"][24] == 2.0
+    )
+    assert (
+        charts["temperature"]["series"][0]["values"][23:25] == [None, 32.0]
+        and charts["temperature"]["line"]["value"] == 32
+    )
+    assert charts["snow"]["series"][0] == {
+        "label": "GFS, depth",
+        "colour": "--cool",
+        "values": [None] * 24 + [1.0] * 48,
+    }
+    assert charts["snow"]["bars"]["values"][24] == 1.0 and charts["soil"]["series"][0]["values"][24] == 25.0
+    assert charts["gusts"]["series"][0]["values"][24] == 10 and charts["soil"]["series"][0]["label"] == "GFS 0-10 cm"
