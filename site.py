@@ -44,7 +44,9 @@ def hefs_latest(out: Path, lid: str) -> dict | None:
     if p is None:
         return None
     fc = read_hefs(p)
-    days = sorted(fc)[: LEADS.stop + 1]
+    days = sorted(fc)[1 : LEADS.stop + 1]  # from the issue day on: the day before it is the analysis, already observed
+    if not days:  # a file of missing values: no fan
+        return None
     cols = list(zip(*(percentiles(fc[d]) for d in days)))
     return {
         "issued": p.stem,

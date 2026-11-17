@@ -20,7 +20,8 @@ def test_build_writes_index_and_point_files(tmp_path):
     assert idx["record_start"] == "20261114" and idx["archive_days"] == 1
     assert {p["kind"] for p in idx["points"]} == {"reservoir", "gauge"} and len(idx["points"]) == 15 + 12
     fol = json.loads((tmp_path / "site" / "points" / "FOLC1.json").read_text())
-    assert fol["hefs"]["dates"][:2] == ["2026-11-14", "2026-11-15"] and fol["hefs"]["p50"][1] == 1000
+    # issued 2026-11-14: the fan starts on the issue day, and its second day is lead 1, the row stamped 2026-11-16
+    assert fol["hefs"]["dates"] == ["2026-11-14", "2026-11-15"] and fol["hefs"]["p50"] == [700, 1000]
     assert fol["models"]["embalse_v1"]["q50"] == [1000, 600] and fol["obs"][-1] == ["2026-11-15", 1000.0]
     assert site.percentiles([3, 1, 2]) == [1, 1, 2, 3, 3]
     guec = json.loads((tmp_path / "site" / "points" / "GUEC1.json").read_text())

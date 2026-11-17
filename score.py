@@ -57,11 +57,19 @@ def read_obs(path: Path) -> dict[date, float]:
 
 
 def read_hefs(path: Path) -> dict[date, list[float]]:
-    """{day: members in cfs}. The first day is the issue day (all members equal the analysis)."""
+    """{day: members in cfs}. A row stamped 12Z is the mean of the 24 hours before it, 04:00 to 04:00 Pacific
+    standard time, so it is keyed by the day before its stamp: the Pacific day that holds 20 of those hours and
+    the day CDEC's daily value describes. The first day is the day before the issue (all members equal the
+    analysis). CNRFC writes -999 for a missing value; those are left out, a day with nothing else is absent, and
+    a file whose first row is missing gives nothing, because its issue day is read from that row."""
     rows = {}
     for line in gzip.decompress(path.read_bytes()).decode().splitlines()[2:]:  # 2 header rows
         f = line.split(",")
-        rows[date.fromisoformat(f[0][:10])] = [float(x) * 1000 for x in f[1:] if x]  # kcfs -> cfs
+        members = [float(x) * 1000 for x in f[1:] if x and float(x) != -999]  # kcfs -> cfs
+        if members:
+            rows[date.fromisoformat(f[0][:10]) - timedelta(days=1)] = members
+        elif not rows:
+            return {}
     return rows
 
 
@@ -77,7 +85,8 @@ def forecasts(out: Path, lid: str) -> list[tuple[str, date, dict[date, list[floa
     latest = {}  # the newest archived HEFS file per issue day wins
     for p in sorted((out / "hefs_daily" / lid).glob("*.gz")):
         fc = read_hefs(p)
-        latest[("hefs", min(fc))] = fc
+        if fc:  # a file of missing values holds no forecast
+            latest[("hefs", min(fc) + timedelta(days=1))] = fc  # the first row is the day before the issue
     for p in sorted((out / "forecasts").glob(f"*/{lid}/*.csv")):
         latest[(p.parent.parent.name, date.fromisoformat(p.stem))] = read_quantiles(p)
     return [(product, issue, fc) for (product, issue), fc in latest.items()]
