@@ -89,6 +89,8 @@ def forecasts(out: Path, lid: str) -> list[tuple[str, date, dict[date, list[floa
         if fc:  # a file of missing values holds no forecast
             latest[("hefs", min(fc) + timedelta(days=1))] = fc  # the first row is the day before the issue
     for p in sorted((out / "forecasts").glob(f"*/{lid}/*.csv")):
+        if "T" in p.stem:  # an hourly forecast: drawn by site.py, not scored yet
+            continue
         errors = check_forecast(p)
         if errors:  # a file that breaks the contract is left out of the record, and said
             print(f"BAD FORECAST {p.relative_to(out)}: {errors[0]}", file=sys.stderr)

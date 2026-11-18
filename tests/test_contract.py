@@ -56,3 +56,30 @@ def test_manifest_requires_keys(tmp_path, capsys):
     assert contract.read_manifest(p) == full
     p.write_text(json.dumps({k: v for k, v in full.items() if k != "caudal_commit"}))
     assert contract.read_manifest(p) is None and "missing caudal_commit" in capsys.readouterr().err
+
+
+HOURLY = "time,lead,q05,q50,q95\n2026-11-18T07:00Z,1,900,1000,1100\n2026-11-18T08:00Z,2,950,1050,1200\n2026-11-18T09:00Z,3,1000,1100,1300\n"
+
+
+def test_hourly_forecast_holds_the_contract(tmp_path):
+    assert contract.check_forecast(write(tmp_path, HOURLY, "2026-11-18T06Z.csv")) == []
+    assert (
+        "header"
+        in contract.check_forecast(write(tmp_path, HOURLY.replace("time,lead", "date,lead"), "2026-11-18T06Z.csv"))[0]
+    )
+    assert (
+        "header" in contract.check_forecast(write(tmp_path, GOOD.replace("date,lead", "time,lead")))[0]
+    )  # a daily name
+
+
+def test_hourly_forecast_with_a_wrong_time_or_a_missing_lead_is_refused(tmp_path):
+    late = contract.check_forecast(write(tmp_path, HOURLY, "2026-11-18T05Z.csv"))
+    assert late[0] == "row 1: 2026-11-18T07:00Z is not the issue hour 2026-11-18T05Z plus 1 hours" and len(late) == 3
+    skipped = contract.check_forecast(
+        write(tmp_path, HOURLY.replace("2026-11-18T08:00Z,2", "2026-11-18T09:00Z,3"), "2026-11-18T06Z.csv")
+    )
+    assert skipped[0] == "row 2 has lead 3: leads run 1, 2, ... with none missing"
+    assert (
+        "does not parse"
+        in contract.check_forecast(write(tmp_path, HOURLY.replace("T07:00Z", " 07:00"), "2026-11-18T06Z.csv"))[0]
+    )

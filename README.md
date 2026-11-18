@@ -16,8 +16,9 @@ years as an ensemble). A daily HEFS row stamped 12Z is the mean of the 24 hours 
 with the day before its stamp; lead 1 is the day after the issue, read from the row stamped two days after
 it. One row per forecast-day in `data/scores/inflow_daily.csv`; the pooled table
 is printed. Model forecasts dropped under `data/forecasts/<model>/<point>/<issue date>.csv` (columns
-`date,lead,q05,...`) are scored the same way, as an ensemble of their quantiles. Flood gauges are archived
-but not yet scored.
+`date,lead,q05,...`) are scored the same way, as an ensemble of their quantiles. An hourly product is named for
+its issue hour (`<date>T<HH>Z.csv`, columns `time,lead,q05,...`); `site.py` draws its newest forecast on the
+point's chart and it is not scored yet. Flood gauges are archived but not yet scored.
 
 Hindcast: CNRFC keeps every 12Z HEFS issue since January 2014 as dated zips. `retro.py` fetches the issue day
 and the 14 leads of each one for the reservoir points into a separate folder with the same layout, and

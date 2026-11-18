@@ -138,7 +138,9 @@ Files, not code. A forecast is `forecasts/<model>/<point>/<issue date>.csv` with
 one column per quantile named `qNN` in increasing order (caudal writes `q05` to `q99`), in cfs, one row per
 lead day counted from the issue date in the file name. `contract.py` states the rules and checks every file:
 `score.py` leaves out one that breaks them and says so, scores the rest beside HEFS with no change to the
-code, and `site.py` draws the newest good one beside the HEFS fan. A product may carry
+code, and `site.py` draws the newest good one beside the HEFS fan. An hourly forecast is the same file named
+for its issue hour, `<YYYY-MM-DD>T<HH>Z.csv`, with `time` in place of `date` and one row per lead hour; it is
+checked and drawn, and not scored yet. A product may carry
 `forecasts/<model>/MODEL.json` naming the model, its commit and its checkpoint; caudal checks the same rules
 before it writes, and one real issued file is the fixture that keeps the two checks equal.
 

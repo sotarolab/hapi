@@ -14,7 +14,8 @@ export interface Point {
   note?: string | null
 }
 export interface Fan { issued: string; dates: string[]; p05: number[]; p25: number[]; p50: number[]; p75: number[]; p95: number[] }
-export interface ModelFan { issued: string; dates: string[]; q05: number[]; q25: number[]; q50: number[]; q75: number[]; q95: number[] }
+/** `dates` holds days for a daily product and hours (ISO, UTC) for an hourly one; `first` is what site.py calls the first value. */
+export interface ModelFan { issued: string; dates: string[]; first?: string; q05: number[]; q25: number[]; q50: number[]; q75: number[]; q95: number[] }
 /** The week's hourly observed flow live.py fetched; stage only at the gauges. */
 export interface Live { source: string; times: string[]; cfs: (number | null)[]; stage_ft: (number | null)[] | null }
 /** An NWS flood category of a gauge; cfs is null where the rating curve does not reach the stage. */

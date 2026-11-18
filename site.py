@@ -67,9 +67,11 @@ def models_latest(out: Path, lid: str) -> dict:
             continue
         with p.open() as f:
             rows = list(csv.DictReader(f))
+        hourly = "time" in rows[0]  # an hourly product: each value is drawn at its hour, a daily one at its day
         models[d.name] = {
             "issued": p.stem,
-            "dates": [r["date"] for r in rows],
+            "dates": [r["time" if hourly else "date"] for r in rows],
+            "first": "next hour" if hourly else "day 1",  # what the tile calls the first value
             **{k: [round(float(r[k])) for r in rows] for k in ["q05", "q25", "q50", "q75", "q95"] if k in rows[0]},
             "manifest": read_manifest(d / "MODEL.json"),
         }

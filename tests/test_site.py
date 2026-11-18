@@ -124,3 +124,20 @@ def test_weather_stitches_the_newest_value_per_hour(tmp_path):
     }
     assert charts["snow"]["bars"]["values"][24] == 1.0 and charts["soil"]["series"][0]["values"][24] == 25.0
     assert charts["gusts"]["series"][0]["values"][24] == 10 and charts["soil"]["series"][0]["label"] == "GFS 0-10 cm"
+
+
+def test_gauge_page_carries_the_newest_hourly_model_forecast(tmp_path):
+    d = tmp_path / "forecasts" / "quantile_flow_hourly_v1_s0" / "GUEC1"
+    d.mkdir(parents=True)
+    rows = "2026-11-18T07:00Z,1,900,950,1000,1050,1100\n2026-11-18T08:00Z,2,950,1000,1050,1150,1200\n"
+    (d / "2026-11-18T06Z.csv").write_text("time,lead,q05,q25,q50,q75,q95\n" + rows)
+    (d / "2026-11-18T00Z.csv").write_text(
+        "time,lead,q05,q25,q50,q75,q95\n" + rows.replace("T07", "T01").replace("T08", "T02")
+    )
+    (d / "2026-11-18T12Z.csv").write_text("time,lead,q50\n2026-11-18T19:00Z,1,1\n")  # breaks the contract: passed over
+    site.build(tmp_path, datetime(2026, 11, 18, 7, tzinfo=UTC))
+    model = json.loads((tmp_path / "site" / "points" / "GUEC1.json").read_text())["models"][
+        "quantile_flow_hourly_v1_s0"
+    ]
+    assert model["issued"] == "2026-11-18T06Z" and model["dates"] == ["2026-11-18T07:00Z", "2026-11-18T08:00Z"]
+    assert model["q50"] == [1000, 1050] and model["first"] == "next hour"
