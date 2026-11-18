@@ -71,7 +71,11 @@ async function getJson<T>(path: string, signal: AbortSignal): Promise<T> {
   if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`)
   return (await r.json()) as T
 }
+import type { IvtField } from './lib/ivt'
+
 export const api = {
+  /** The IVT field for the map; absent until ivt_field.py has saved a forecast cycle. */
+  ivt: (signal: AbortSignal) => getJson<IvtField>('ivt.json', signal),
   index: (signal: AbortSignal) => getJson<Index>('index.json', signal),
   point: (lid: string, signal: AbortSignal) => getJson<PointData>(`points/${lid}.json`, signal),
 }
