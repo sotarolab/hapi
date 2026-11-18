@@ -1,11 +1,17 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Point } from '../api'
+import { api, type Point } from '../api'
+import type { IvtField } from '../lib/ivt'
+import { ivtLayer } from './IvtLayer'
 
 const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 type Overlay = L.TileLayer | L.TileLayer.WMS
+
+/** California itself, not the point set: the points cluster north and the state's shape reads better. */
+const CALIFORNIA: L.LatLngBoundsLiteral = [[32.5, -124.5], [42.1, -114.1]]
+const IVT_FRAME_MS = 700  // how long the time bar holds each frame when it plays
 
 /** Radar and GOES imagery are published every five minutes, so a five-minute stamp in the URL is what makes
  *  a redraw fetch the new frame, and lets the cache serve the old one in between. */
@@ -77,7 +83,8 @@ function refresh(layer: Overlay) {
 /** Every point on one map: reservoirs in blue, flood gauges in orange, the selected one ringed in white.
  *  A click selects; the view is fitted once to the whole set and then left alone. Radar and satellite
  *  overlays can be switched on from the top right corner and advance with the app's refresh (`tick`); the
- *  button at the bottom left plays the last 50 minutes of radar.
+ *  button at the bottom left plays the last 50 minutes of radar. The IVT button lays the field site.py wrote
+ *  over the northeast Pacific as moving particles, with a time bar, and widens the map to the page while on.
  *  The map takes the size of its container. */
 export function PointMap({ points, selected, onSelect, tick = 0 }: { points: Point[]; selected: string | null; onSelect: (lid: string) => void; tick?: number }) {
   const el = useRef<HTMLDivElement>(null)
@@ -86,6 +93,12 @@ export function PointMap({ points, selected, onSelect, tick = 0 }: { points: Poi
   const overlays = useRef<Record<string, Overlay> | null>(null)
   const select = useRef(onSelect)
   select.current = onSelect
+  const [ivtOn, setIvtOn] = useState(false)
+  const [ivt, setIvt] = useState<IvtField | null>(null)
+  const [ivtMissing, setIvtMissing] = useState(false)
+  const [frame, setFrame] = useState(0)
+  const [playing, setPlaying] = useState(false)
+  const layer = useRef<ReturnType<typeof ivtLayer> | null>(null)
 
   useEffect(() => {
     if (!el.current || map.current) return
@@ -119,9 +132,45 @@ export function PointMap({ points, selected, onSelect, tick = 0 }: { points: Poi
       markers.current.set(p.lid, mk)
       bounds.push([p.lat, p.lon])
     }
-    // California itself, not the point set: the points cluster north and the state's shape reads better.
-    if (bounds.length) m.fitBounds([[32.5, -124.5], [42.1, -114.1]], { padding: [8, 8] })
+    if (bounds.length && !layer.current) m.fitBounds(CALIFORNIA, { padding: [8, 8] })
   }, [points])
+
+  // The IVT field is fetched the first time the layer is switched on, and again with the app's refresh.
+  useEffect(() => {
+    if (!ivtOn) return
+    const stop = new AbortController()
+    api.ivt(stop.signal)
+      .then((f) => { setIvt((old) => { if (old?.issued !== f.issued) setFrame(f.now); return f }); setIvtMissing(false) })
+      .catch((e) => { if (e.name !== 'AbortError') setIvtMissing(true) })
+    return () => stop.abort()
+  }, [ivtOn, tick])
+
+  // On: the map widens to the page, moves to the field's box and gets the layer. Off: back to California.
+  useEffect(() => {
+    const m = map.current
+    if (!m || !ivtOn || !ivt) return
+    const shell = el.current?.closest('.shell')
+    shell?.classList.add('wide')
+    m.invalidateSize()
+    m.fitBounds([[ivt.south, ivt.west], [ivt.north, ivt.east]])
+    layer.current = ivtLayer(m, ivt, 'wx')
+    return () => {
+      layer.current?.remove()
+      layer.current = null
+      setPlaying(false)
+      shell?.classList.remove('wide')
+      m.invalidateSize()
+      m.fitBounds(CALIFORNIA, { padding: [8, 8] })
+    }
+  }, [ivtOn, ivt])
+
+  useEffect(() => { layer.current?.setFrame(frame) }, [frame, ivt, ivtOn])
+
+  useEffect(() => {
+    if (!playing || !ivt) return
+    const timer = window.setInterval(() => setFrame((i) => (i + 1) % ivt.times.length), IVT_FRAME_MS)
+    return () => window.clearInterval(timer)
+  }, [playing, ivt])
 
   useEffect(() => {
     markers.current.forEach((mk, lid) => {
@@ -131,5 +180,27 @@ export function PointMap({ points, selected, onSelect, tick = 0 }: { points: Poi
     })
   }, [selected, points])
 
-  return <div className="map" ref={el} />
+  const shown = ivtOn && ivt
+  return (
+    <div className="mapbox">
+      <div className="map" ref={el} />
+      <button className="radar-play ivt-toggle" onClick={() => setIvtOn((on) => !on)}>{ivtOn ? '■ IVT' : '▶ IVT'}</button>
+      {ivtOn && ivtMissing && !ivt && <div className="ivtbar"><span className="ivt-label">No IVT field has been saved yet.</span></div>}
+      {shown && (
+        <div className="ivtbar">
+          <button className="radar-play" onClick={() => setPlaying((p) => !p)}>{playing ? '■' : '▶'}</button>
+          <div className="ivt-slider">
+            <input type="range" min={0} max={ivt.times.length - 1} value={frame} onChange={(e) => { setPlaying(false); setFrame(+e.target.value) }} />
+            <i className="ivt-now" style={{ left: `${(ivt.now / (ivt.times.length - 1)) * 100}%` }} />
+          </div>
+          <span className="ivt-label">{ivt.labels[frame]}{frame === ivt.now ? ' · now' : frame < ivt.now ? ' · past' : ' · forecast'}</span>
+          <span className="ivt-legend">
+            {ivt.legend.map((s) => <span key={s.from}><i style={{ background: s.colour }} />{s.label}</span>)}
+            <span>{ivt.unit}</span>
+          </span>
+          <span className="ivt-note">{ivt.issued} · {ivt.floor}</span>
+        </div>
+      )}
+    </div>
+  )
 }
