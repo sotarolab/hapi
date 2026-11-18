@@ -98,10 +98,12 @@ flowchart TB
 | `weather/` | `weather.py` | One derived file per point and fetch: hourly series per model, IVT |
 | `ivt_gfs/` | `ivt_field.py` | The GFS IVT field over the northeast Pacific, two components, one file per forecast cycle |
 | `cdec_inflow/` | `score.py` | Observed daily inflow, full record, refetched every run (CDEC revises) |
+| `cdec_inflow_log/` | `score.py` | Each day's inflow as first published and every revision, with the time it was seen; rows are only added |
 | `forecasts/<model>/<point>/` | caudal | Model quantile forecasts, one file per issue, never rewritten |
 | `forcing/` | caudal | The daily forcing each issue used, extended run by run |
 | `scores/` | `score.py` | One row per scored forecast day, product, point and lead |
 | `live/` | `live.py` | The week's hourly flow per point and each gauge's flood categories in cfs |
+| `gauge_obs/` | `live.py` | The gauges' observed flow and stage for good, one file per gauge and day; each value as first seen and every revision |
 | `site/` | `site.py` | The JSON the page reads: `index.json` and `points/<point>.json` |
 
 ## What the page draws from
@@ -169,6 +171,8 @@ it predicts; a hindcast has no such proof. The hindcast folder is ignored by git
   04:00 to 04:00 Pacific standard time. `score.py` pairs it with the day before its stamp, the Pacific day
   CDEC's value describes, which holds 20 of those 24 hours. Lead 1 is the day after the issue.
 - **Observations are revised.** CDEC edits past values, so a score can change after the fact. Forecasts never do.
+  The scores use the current values; `cdec_inflow_log/` and `gauge_obs/` keep what was first published and when
+  each revision was seen, from 2026-11-18 on.
 - **CDEC's hourly inflow is computed** from storage and release and is noisy. The page shows a centred
   24-hour mean, only at reservoirs whose hourly values over the week vary less than their mean (four of
   fifteen on 2026-11-16), and treats zero hours as missing, which is what CDEC writes when a component

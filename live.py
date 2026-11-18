@@ -1,7 +1,7 @@
 """Fetch what changes through the day and is not worth archiving: the hourly observed flow at every point over
 the last week (CDEC computed inflow at the reservoirs, the NWS observed series at the flood gauges) and the NWS
 flood categories of each gauge in cfs. Rewrites data/live/<lid>.json on every run; site.py copies the file
-into the point's page data.
+into the point's page data. The gauges' observed series is also kept for good, under data/gauge_obs/ (`record`).
 
 Run: python live.py [out_dir]   (default: data/)
 """
@@ -107,6 +107,36 @@ def since(live: dict, start: str) -> dict:
     }
 
 
+def record(out: Path, lid: str, obs: dict, now: datetime) -> int:
+    """Keep a gauge's observed series as a growing record, out/gauge_obs/<lid>/<YYYY-MM-DD>.csv: one row
+    (time, cfs, stage_ft, seen) for each value the first time it is seen and each time it changes, `seen` being
+    the time of this run. Rows are only ever added, so the first value published for a time stays in the file
+    beside its revisions. A file holds one UTC day, so an hourly run rewrites a few kilobytes, not a month.
+    Returns the number of rows added."""
+    text = lambda v: "" if v is None else f"{v:g}"
+    days: dict[str, list[tuple[str, str, str]]] = {}
+    for t, cfs, stage in zip(obs["times"], obs["cfs"], obs["stage_ft"]):
+        if cfs is not None or stage is not None:
+            days.setdefault(t[:10], []).append((t, text(cfs), text(stage)))
+    added = 0
+    for day, rows in days.items():
+        path = out / "gauge_obs" / lid / f"{day}.csv"
+        known = {}
+        if path.exists():
+            with path.open(newline="") as f:
+                known = {r[0]: (r[1], r[2]) for r in list(csv.reader(f))[1:]}  # the last row of a time is its value now
+        new = [r for r in rows if known.get(r[0]) != (r[1], r[2])]
+        if new:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", newline="") as f:
+                w = csv.writer(f)
+                if not known:
+                    w.writerow(["time", "cfs", "stage_ft", "seen"])
+                w.writerows([*r, f"{now:%Y-%m-%dT%H:%MZ}"] for r in new)
+            added += len(new)
+    return added
+
+
 def update_live(out: Path, now: datetime) -> int:
     """Rewrite out/live/<lid>.json for every point. Returns the number of points that failed."""
     d = out / "live"
@@ -148,6 +178,7 @@ def update_live(out: Path, now: datetime) -> int:
             failed += 1
             print(f"BAD PAYLOAD nwps {lid}: {e}", file=sys.stderr)
             continue
+        record(out, lid, live, now)
         (d / f"{lid}.json").write_text(json.dumps(since(live, start.strftime("%Y-%m-%dT%H:%M:%SZ"))))
     return failed
 

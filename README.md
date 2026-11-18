@@ -53,6 +53,11 @@ Live: `live.py` rewrites `data/live/<lid>.json` every run with the week's hourly
 (at the reservoirs a centred 24-hour mean of CDEC's hourly computed inflow, written only where the hourly values vary less than their mean; at the gauges the NWS observed series) and each gauge's NWS flood
 categories in cfs, read off the gauge's NWS rating curve where NWPS gives only the stage.
 
+Observations as published: the feeds revise their values, so two logs keep what was first published. `score.py`
+appends to `data/cdec_inflow_log/<station>.csv` each day's inflow the first time it appears and each time it
+changes (`date,cfs,seen`), and `live.py` does the same for the gauges' observed flow and stage in
+`data/gauge_obs/<gauge>/<day>.csv` (`time,cfs,stage_ft,seen`). Rows are only added.
+
 Step 3: `site.py` digests the archive into `data/site/` (points, the newest fans, the scorecards, the weather
 panel) and `app/` is the page that reads it: a map of the points with radar and satellite overlays, each point's
 observed inflow with the HEFS fan, the model fans and the NWS official forecast, its weather and AR scale,

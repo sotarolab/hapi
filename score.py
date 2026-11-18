@@ -5,7 +5,8 @@ quantiles. Every scored forecast day is one row of the ledger; the pooled table 
 
 Run: python score.py [out_dir]   (default: data/)
      writes out/cdec_inflow/<station>.csv (date,cfs; full record, refreshed every run because CDEC
-     revises values) and out/scores/inflow_daily.csv
+     revises values), out/cdec_inflow_log/<station>.csv (date,cfs,seen; each day's first value and every
+     revision, with the time it was seen) and out/scores/inflow_daily.csv
 """
 
 from __future__ import annotations
@@ -31,7 +32,8 @@ MIN_CLIM_YEARS = 10
 
 
 def update_obs(out: Path, now: datetime) -> int:
-    """Rewrite out/cdec_inflow/<sta>.csv from CDEC. Returns the number of stations that failed."""
+    """Rewrite out/cdec_inflow/<sta>.csv from CDEC, and log what changed since the last run under
+    out/cdec_inflow_log/ (`log_changes`). Returns the number of stations that failed."""
     d = out / "cdec_inflow"
     d.mkdir(parents=True, exist_ok=True)
     failed = 0
@@ -42,6 +44,7 @@ def update_obs(out: Path, now: datetime) -> int:
             print(f"BAD PAYLOAD cdec {sta}", file=sys.stderr)
             continue
         rows = csv.DictReader(body.decode().splitlines())
+        old = read_obs(d / f"{sta}.csv") if (d / f"{sta}.csv").exists() else None
         with (d / f"{sta}.csv").open("w", newline="") as f:
             w = csv.writer(f)
             w.writerow(["date", "cfs"])
@@ -49,7 +52,25 @@ def update_obs(out: Path, now: datetime) -> int:
                 if r["VALUE"] != "---":  # CDEC's missing marker
                     t = r["DATE TIME"]
                     w.writerow([f"{t[:4]}-{t[4:6]}-{t[6:8]}", r["VALUE"]])
+        if old is not None:  # the log starts from the record already here: a first fetch has nothing to compare
+            log_changes(out / "cdec_inflow_log" / f"{sta}.csv", old, read_obs(d / f"{sta}.csv"), now)
     return failed
+
+
+def log_changes(path: Path, old: dict[date, float], new: dict[date, float], now: datetime) -> int:
+    """Append to a station's log (date, cfs, seen) every day whose value is new or differs from `old`: the
+    first value CDEC published for a day, then each revision, with the time of the run that saw it. Rows are
+    only ever added. Returns the number of rows added."""
+    rows = [(d, v) for d, v in sorted(new.items()) if old.get(d) != v]
+    if rows:
+        fresh = not path.exists()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", newline="") as f:
+            w = csv.writer(f)
+            if fresh:
+                w.writerow(["date", "cfs", "seen"])
+            w.writerows((d.isoformat(), f"{v:g}", f"{now:%Y-%m-%dT%H:%MZ}") for d, v in rows)
+    return len(rows)
 
 
 def read_obs(path: Path) -> dict[date, float]:

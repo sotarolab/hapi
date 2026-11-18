@@ -1,4 +1,5 @@
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -66,6 +67,32 @@ def test_alerts_use_nwps_flow_or_the_rating_curve():
     assert live.rating_flow(RATING, 60) is None and live.alerts({"flood": None}, RATING) == []
     full = {"flood": {"categories": {"minor": {"stage": 32, "flow": 45000}, "action": {"stage": 29, "flow": 37700}}}}
     assert [a["cfs"] for a in live.alerts(full, [])] == [37700, 45000]  # every flow given: NWPS's own numbers
+
+
+def test_gauge_record_appends_and_never_shrinks(tmp_path):
+    seen = lambda hour: datetime(2026, 11, 30, hour, 41, tzinfo=UTC)
+    obs = {"times": ["2026-11-30T21:00:00Z", "2026-11-30T22:00:00Z"], "cfs": [204, 210], "stage_ft": [4.51, 4.6]}
+    assert live.record(tmp_path, "GUEC1", obs, seen(22)) == 2
+    # an hour later the feed has dropped 21:00, revised 22:00, and serves two new times, one on the next day
+    obs = {
+        "times": ["2026-11-30T22:00:00Z", "2026-11-30T23:00:00Z", "2026-12-01T00:00:00Z"],
+        "cfs": [215, 230, None],
+        "stage_ft": [4.6, 4.8, 5.0],
+    }
+    assert live.record(tmp_path, "GUEC1", obs, seen(23)) == 3
+    assert live.record(tmp_path, "GUEC1", obs, seen(23)) == 0  # the same fetch again adds nothing
+    d = tmp_path / "gauge_obs" / "GUEC1"
+    assert (d / "2026-11-30.csv").read_text().splitlines() == [
+        "time,cfs,stage_ft,seen",
+        "2026-11-30T21:00:00Z,204,4.51,2026-11-30T22:41Z",  # no longer served, still here
+        "2026-11-30T22:00:00Z,210,4.6,2026-11-30T22:41Z",  # the first value published
+        "2026-11-30T22:00:00Z,215,4.6,2026-11-30T23:41Z",  # and its revision
+        "2026-11-30T23:00:00Z,230,4.8,2026-11-30T23:41Z",
+    ]
+    assert (d / "2026-12-01.csv").read_text().splitlines() == [
+        "time,cfs,stage_ft,seen",
+        "2026-12-01T00:00:00Z,,5,2026-11-30T23:41Z",
+    ]
 
 
 def test_since_keeps_the_window():
