@@ -1,7 +1,7 @@
 import gzip
 import random
 import sys
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -34,6 +34,27 @@ def test_missing_marker_is_not_a_forecast(tmp_path):
     (d / "20261115T123000Z.gz").write_bytes(gzip.compress(b"GMT,FOLC1\n,SQME\n2026-11-15 12:00:00,-999\n"))
     issues = [issue for _, issue, _ in score.forecasts(tmp_path, "FOLC1")]
     assert issues == [date(2026, 11, 14)]  # the file with no analysis is left out whole
+
+
+def test_obs_log_keeps_the_first_value_and_each_revision(tmp_path):
+    log = tmp_path / "cdec_inflow_log" / "FOL.csv"
+    day = lambda n: date(2026, 11, n)
+    first = datetime(2026, 11, 16, 12, 53, tzinfo=UTC)
+    assert score.log_changes(log, {day(14): 1653.0}, {day(14): 1653.0, day(15): 983.0}, first) == 1  # a new day
+    later = datetime(2026, 11, 17, 12, 39, tzinfo=UTC)
+    assert (
+        score.log_changes(
+            log, {day(14): 1653.0, day(15): 983.0}, {day(14): 1653.0, day(15): 975.0, day(16): 900.0}, later
+        )
+        == 2
+    )
+    assert score.log_changes(log, {day(16): 900.0}, {day(16): 900.0}, later) == 0  # nothing changed, nothing written
+    assert log.read_text().splitlines() == [
+        "date,cfs,seen",
+        "2026-11-15,983,2026-11-16T12:53Z",  # the first value published stays
+        "2026-11-15,975,2026-11-17T12:39Z",  # beside its revision
+        "2026-11-16,900,2026-11-17T12:39Z",
+    ]
 
 
 def test_score_one_forecast_day(tmp_path):
