@@ -45,6 +45,27 @@ def test_build_writes_index_and_point_files(tmp_path):
     assert fol["weather"] is None and guec["weather"] is None  # nothing archived by weather.py
 
 
+def test_ivt_file_stitches_past_analyses_and_the_newest_forecast(tmp_path):
+    d = tmp_path / "ivt_gfs"
+    d.mkdir()
+    grid = {"north": 39, "south": 38, "west": -124, "east": -123, "nx": 2, "ny": 2}
+
+    def save(name, cycle, hours, first):
+        body = {"cycle": cycle, "hours": hours, **grid, "u": [[first + k] * 4 for k in range(len(hours))]}
+        (d / f"{name}.gz").write_bytes(gzip.compress(json.dumps({**body, "v": body["u"]}).encode()))
+
+    save("2026111400", "2026-11-14T00:00Z", [0], 1)  # older than the two days kept
+    save("2026111712", "2026-11-17T12:00Z", [0], 2)
+    save("2026111718", "2026-11-17T18:00Z", [0, 6], 3)  # an older full cycle: only its analysis is used
+    save("2026111800", "2026-11-18T00:00Z", [0, 6, 12], 10)
+    site.build(tmp_path, datetime(2026, 11, 18, 7, tzinfo=UTC))
+    f = json.loads((tmp_path / "site" / "ivt.json").read_text())
+    assert f["times"] == [f"2026-11-{d}:00Z" for d in ("17T12", "17T18", "18T00", "18T06", "18T12")]
+    assert [u[0] for u in f["u"]] == [2, 3, 10, 11, 12]  # at 00Z the newest cycle's own analysis, not the 18Z forecast
+    assert f["now"] == 3 and f["labels"][3] == "Nov 18 06Z" and f["issued"] == "GFS 2026-11-18 00Z"
+    assert [s["from"] for s in f["legend"]] == [250, 500, 750, 1000, 1250] and (f["nx"], f["north"]) == (2, 39)
+
+
 def test_weather_panel_is_built_from_the_issue_hour(tmp_path):
     hours = [f"2026-11-{16 + h // 24:02d}T{h % 24:02d}:00" for h in range(96)]
     ivt = [100] * 12 + [600] * 30 + [100] * 54  # 30 h at tier 2: CAT 2, starting at hour 12
