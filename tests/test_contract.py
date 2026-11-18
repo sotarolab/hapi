@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import contract
 
 REAL = Path(__file__).parent / "fixtures" / "forecasts" / "quantile_inflow_v1_s0" / "FOLC1" / "2026-11-15.csv"
+REAL_HOURLY = REAL.parents[2] / "quantile_flow_hourly_v1_s0" / "GUEC1" / "2026-11-18T01Z.csv"
 GOOD = "date,lead,q05,q50,q95\n2026-11-16,1,900,1000,1100\n2026-11-17,2,500,600,700\n"
 
 
@@ -18,6 +19,12 @@ def write(tmp_path, text, name="2026-11-15.csv"):
 def test_real_caudal_file_passes():
     assert REAL.read_text().startswith("date,lead,q05,q25,q50,q75,q90,q95,q99")  # seven quantiles, as issued
     assert contract.check_forecast(REAL) == []
+
+
+def test_real_caudal_hourly_file_passes():
+    lines = REAL_HOURLY.read_text().splitlines()
+    assert lines[0] == "time,lead,q05,q25,q50,q75,q90,q95,q99" and len(lines) == 121  # 120 lead hours, as issued
+    assert contract.check_forecast(REAL_HOURLY) == []
 
 
 def test_good_file_passes_and_the_name_must_be_a_date(tmp_path):
