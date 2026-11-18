@@ -36,8 +36,13 @@ jobs:
         continue-on-error: true
       - run: python score.py data-branch/data
       - run: python live.py data-branch/data
+        continue-on-error: true  # one point CDEC or the NWS did not answer for loses that point's hour, nothing else
+      # The page data and the commit do not wait on the steps above: what was archived this hour is kept even
+      # when a later script fails, and the run still ends red.
       - run: python site.py data-branch/data
+        if: ${{ !cancelled() }}
       - name: Commit new files
+        if: ${{ !cancelled() }}
         working-directory: data-branch
         run: |
           git config user.name "github-actions[bot]"
