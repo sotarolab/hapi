@@ -68,7 +68,9 @@ sequenceDiagram
 ```
 
 The weather step has its own five-minute timeout and continues on error, so a stalled Open-Meteo hour loses
-only the weather. The IVT field step has three minutes and the same rule. Everything else runs in the order shown, each script reading what the previous ones wrote.
+only the weather. The IVT field step has three minutes and the same rule, and so does the live step: a point
+CDEC or the NWS does not answer for loses that point's hour. The page data and the commit run whenever the
+run was not cancelled, so what was archived in an hour is committed even when a later script fails.
 
 ## Where the data comes from
 
