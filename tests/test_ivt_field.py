@@ -5,8 +5,6 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import ivt_field
 import weather
@@ -27,8 +25,12 @@ def test_a_message_with_another_packing_is_refused():
     while body[p + 4] != 5:  # walk the sections to the data representation
         p += struct.unpack(">I", body[p : p + 4])[0]
     body[p + 9 : p + 11] = struct.pack(">H", 3)  # complex packing with spatial differencing
-    with pytest.raises(ValueError, match="not simple packing"):
+    try:
         ivt_field.messages(bytes(body))
+    except ValueError as e:
+        assert "not simple packing" in str(e)
+    else:
+        raise AssertionError("a message in complex packing was decoded")
 
 
 def test_ivt_of_a_uniform_column_matches_the_hand_computed_value():
