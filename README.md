@@ -31,6 +31,7 @@ skill on water years 2016-2025 is in that package; the live score is this ledger
 
     python archive.py          # writes data/<product>/<point>/<UTC time>.gz, skipping unchanged files
     python weather.py          # writes data/weather/<point>/<UTC time>.gz: the weather forecast at each point
+    python ivt_field.py        # writes data/ivt_gfs/<cycle>.gz: the GFS IVT field, once per forecast cycle
     python score.py            # refreshes data/cdec_inflow/<station>.csv, writes data/scores/inflow_daily.csv
     python retro.py hindcast 2015-10-01 2025-09-30 && python score.py hindcast   # past HEFS issues, scored apart
     python -m pytest tests
@@ -40,6 +41,12 @@ Weather: `weather.py` runs with the archive, refetching a point once its newest 
 precipitation and freezing level from GFS, ECMWF IFS, ICON and NBM, and integrated vapor transport (IVT)
 computed from GFS winds and humidity on pressure levels. `ar_scale.py` grades the IVT on the atmospheric river
 scale of Ralph et al. (2019).
+
+IVT field: `ivt_field.py` runs with the archive and saves the GFS forecast of IVT over the northeast Pacific
+(20 to 55 N, 170 to 110 W, 1 degree) as two components, one file per forecast cycle under `data/ivt_gfs/`:
+hours 0 to 120 every 6 hours. It reads NOAA's GRIB filter and decodes the simple-packed GRIB2 messages itself,
+with the standard library. `site.py` writes `data/site/ivt.json` from it for the map: the past two days and
+the forecast, with the legend.
 
 Live: `live.py` rewrites `data/live/<lid>.json` every run with the week's hourly observed flow at each point
 (at the reservoirs a centred 24-hour mean of CDEC's hourly computed inflow, written only where the hourly values vary less than their mean; at the gauges the NWS observed series) and each gauge's NWS flood

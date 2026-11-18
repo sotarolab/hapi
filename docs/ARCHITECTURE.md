@@ -53,20 +53,22 @@ reads caudal's code.
 sequenceDiagram
   participant A as archive.py
   participant W as weather.py
+  participant F as ivt_field.py
   participant S as score.py
   participant L as live.py
   participant B as site.py
   participant D as data branch
   A->>D: hefs_daily/, hefs_hourly/, nwps_forecast/ (new issues only)
   W->>D: weather/ (a point only when its newest file is 5 h old)
+  F->>D: ivt_gfs/ (a forecast cycle only when NOAA has posted a new one)
   S->>D: cdec_inflow/ refreshed, scores/inflow_daily.csv rewritten
   L->>D: live/(point).json rewritten (hourly flow, flood categories)
-  B->>D: site/index.json, site/points/(point).json rewritten
+  B->>D: site/index.json, site/points/(point).json, site/ivt.json rewritten
   Note over A,D: one commit per run; a run that changes nothing commits nothing
 ```
 
 The weather step has its own five-minute timeout and continues on error, so a stalled Open-Meteo hour loses
-only the weather. Everything else runs in the order shown, each script reading what the previous ones wrote.
+only the weather. The IVT field step has three minutes and the same rule. Everything else runs in the order shown, each script reading what the previous ones wrote.
 
 ## Where the data comes from
 
@@ -92,6 +94,7 @@ flowchart TB
 | `hefs_daily/`, `hefs_hourly/` | `archive.py` | HEFS ensembles as fetched, one gzip per point and issue |
 | `nwps_forecast/` | `archive.py` | The NWS official stage and flow forecast for the gauges |
 | `weather/` | `weather.py` | One derived file per point and fetch: hourly series per model, IVT |
+| `ivt_gfs/` | `ivt_field.py` | The GFS IVT field over the northeast Pacific, two components, one file per forecast cycle |
 | `cdec_inflow/` | `score.py` | Observed daily inflow, full record, refetched every run (CDEC revises) |
 | `forecasts/<model>/<point>/` | caudal | Model quantile forecasts, one file per issue, never rewritten |
 | `forcing/` | caudal | The daily forcing each issue used, extended run by run |
@@ -121,6 +124,7 @@ pane, for instance, draws whatever tiles and series `site.py` wrote, with their 
 | `points.py` | The 15 reservoirs and 12 gauges: names, coordinates, USGS ids |
 | `archive.py` | Feeds and the fetch and save helpers the other scripts share; CDEC station per reservoir |
 | `weather.py` | Open-Meteo fetch, IVT from the pressure levels, the derived file |
+| `ivt_field.py` | NOAA's GRIB filter for GFS, a decoder for simple-packed GRIB2, the IVT field per forecast cycle |
 | `ar_scale.py` | The atmospheric river scale of Ralph et al. (2019) on hourly IVT |
 | `contract.py` | The rules a model forecast file and its manifest meet, and their check |
 | `score.py` | Observations, fair CRPS, 90% coverage, persistence and climatology baselines, leads 1 to 14 |

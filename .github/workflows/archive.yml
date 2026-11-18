@@ -31,6 +31,9 @@ jobs:
       - run: python weather.py data-branch/data
         timeout-minutes: 5  # a stalled Open-Meteo hour loses the weather, not the archive, flow and site below
         continue-on-error: true
+      - run: python ivt_field.py data-branch/data
+        timeout-minutes: 3  # a slow NOAA hour loses the new IVT field, not the rest of the run
+        continue-on-error: true
       - run: python score.py data-branch/data
       - run: python live.py data-branch/data
       - run: python site.py data-branch/data

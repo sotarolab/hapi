@@ -17,12 +17,17 @@ from pathlib import Path
 
 from ar_scale import IVT_AR_THRESHOLD, classify_ar
 from contract import check_forecast, read_manifest
+from ivt_field import load as load_ivt
 from points import GAUGES, RESERVOIRS
 from score import LEADS, NOISY, SCORED, read_hefs, read_obs
 
 MIN_PAIRS = 20  # a scorecard cell with fewer forecast-days is shown but flagged thin
 OBS_DAYS = 120
 WEATHER_PAST_DAYS = 7
+IVT_PAST_HOURS = 48
+# The colour steps of the IVT map: the peak-IVT thresholds of the AR scale (ar_scale.py), from the floor of AR
+# conditions up. Below the first step the map shows nothing.
+IVT_STEPS = [(250, "#3f73d8"), (500, "#35b3a0"), (750, "#f1c642"), (1000, "#f08a3c"), (1250, "#e2457c")]
 SOIL_COLOURS = ["--cool", "--ml", "--warn"]  # soil layers, in the order the files list them
 WEATHER_COLOURS = {
     "GFS": "--cool",
@@ -272,6 +277,38 @@ def weather_latest(out: Path, lid: str) -> dict | None:
     }
 
 
+def ivt_page(out: Path, now: datetime) -> dict | None:
+    """The IVT field for the map, ready to draw: one frame of eastward and northward IVT per valid time, with
+    its label, the frame that is now, and the legend. The frames are the hour 0 fields of the cycles saved
+    over the IVT_PAST_HOURS before the newest full cycle, then that cycle's forecast. None before ivt_field.py
+    has saved a full cycle."""
+    cycles = [load_ivt(p) for p in sorted((out / "ivt_gfs").glob("*.gz"))[-(IVT_PAST_HOURS // 6 + 4) :]]
+    full = [c for c in cycles if len(c["hours"]) > 1]
+    if not full:
+        return None
+    newest = full[-1]
+    start = lambda c: datetime.strptime(c["cycle"], "%Y-%m-%dT%H:%MZ").replace(tzinfo=UTC)
+    frames = {}  # valid time -> (u, v); the newest cycle is put last, so its hours win
+    for c in [c for c in cycles if timedelta(0) < start(newest) - start(c) <= timedelta(hours=IVT_PAST_HOURS)]:
+        frames[start(c)] = (c["u"][0], c["v"][0])
+    for k, hour in enumerate(newest["hours"]):
+        frames[start(newest) + timedelta(hours=hour)] = (newest["u"][k], newest["v"][k])
+    times = sorted(frames)
+    return {
+        "issued": f"GFS {start(newest):%Y-%m-%d %H}Z",
+        "source": "GFS 1 degree, NOAA; IVT from wind and humidity, 1000 to 300 hPa",
+        "unit": "kg/m/s",
+        **{k: newest[k] for k in ("north", "south", "west", "east", "nx", "ny")},
+        "times": [f"{t:%Y-%m-%dT%H:%MZ}" for t in times],
+        "labels": [f"{t:%b} {t.day} {t:%H}Z" for t in times],
+        "now": max((i for i, t in enumerate(times) if t <= now), default=0),
+        "u": [frames[t][0] for t in times],
+        "v": [frames[t][1] for t in times],
+        "legend": [{"from": level, "colour": colour, "label": f"{level:,}"} for level, colour in IVT_STEPS],
+        "floor": f"AR conditions from {IVT_AR_THRESHOLD:.0f} kg/m/s",
+    }
+
+
 def live_latest(out: Path, lid: str) -> dict | None:
     """What live.py fetched for the point: the week's hourly flow and, at a gauge, its flood categories."""
     p = out / "live" / f"{lid}.json"
@@ -383,6 +420,9 @@ def build(out: Path, now: datetime) -> dict:
         "scores": scorecards(out),
     }
     (site / "index.json").write_text(json.dumps(index))
+    field = ivt_page(out, now)
+    if field:
+        (site / "ivt.json").write_text(json.dumps(field, separators=(",", ":")))
     return index
 
 

@@ -50,12 +50,19 @@ PROFILE = (
 )
 
 
+def transport(flux: list[tuple[float, float, float]]) -> tuple[float, float]:
+    """Eastward and northward IVT (kg/m/s) from the moisture flux at each level. Rows are (pressure Pa, q*u,
+    q*v), ordered from the surface upward; the flux is integrated over pressure by the trapezoid rule and
+    divided by g."""
+    qu, qv = (sum((lo[k] + hi[k]) / 2 * (lo[0] - hi[0]) for lo, hi in zip(flux, flux[1:])) / GRAVITY for k in (1, 2))
+    return qu, qv
+
+
 def ivt(profile: list[tuple]) -> float | None:
     """IVT magnitude (kg/m/s) from one sounding. Rows are (pressure hPa, wind speed m/s, wind direction deg,
     relative humidity %, temperature C), ordered from the surface upward. None if any value is missing.
 
-    Specific humidity comes from RH and temperature (Bolton 1980); the moisture flux q*u, q*v is integrated
-    over pressure by the trapezoid rule and divided by g."""
+    Specific humidity comes from RH and temperature (Bolton 1980); `transport` integrates the moisture flux."""
     flux = []
     for p, speed, direction, rh, temp in profile:
         if None in (speed, direction, rh, temp):
@@ -64,8 +71,7 @@ def ivt(profile: list[tuple]) -> float | None:
         q = 0.622 * e / (p - 0.378 * e)
         a = math.radians(direction)  # the direction the wind blows from
         flux.append((p * 100, -q * speed * math.sin(a), -q * speed * math.cos(a)))
-    qu, qv = (sum((lo[k] + hi[k]) / 2 * (lo[0] - hi[0]) for lo, hi in zip(flux, flux[1:])) / GRAVITY for k in (1, 2))
-    return math.hypot(qu, qv)
+    return math.hypot(*transport(flux))
 
 
 def derive(surface: dict, profile: dict) -> dict:
