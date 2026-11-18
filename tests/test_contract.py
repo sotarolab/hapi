@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import contract
 
 REAL = Path(__file__).parent / "fixtures" / "forecasts" / "quantile_inflow_v1_s0" / "FOLC1" / "2026-11-15.csv"
+REAL_HOURLY = REAL.parents[2] / "quantile_flow_hourly_v1_s0" / "GUEC1" / "2026-11-18T01Z.csv"
 GOOD = "date,lead,q05,q50,q95\n2026-11-16,1,900,1000,1100\n2026-11-17,2,500,600,700\n"
 
 
@@ -18,6 +19,12 @@ def write(tmp_path, text, name="2026-11-15.csv"):
 def test_real_caudal_file_passes():
     assert REAL.read_text().startswith("date,lead,q05,q25,q50,q75,q90,q95,q99")  # seven quantiles, as issued
     assert contract.check_forecast(REAL) == []
+
+
+def test_real_caudal_hourly_file_passes():
+    lines = REAL_HOURLY.read_text().splitlines()
+    assert lines[0] == "time,lead,q05,q25,q50,q75,q90,q95,q99" and len(lines) == 121  # 120 lead hours, as issued
+    assert contract.check_forecast(REAL_HOURLY) == []
 
 
 def test_good_file_passes_and_the_name_must_be_a_date(tmp_path):
@@ -56,3 +63,30 @@ def test_manifest_requires_keys(tmp_path, capsys):
     assert contract.read_manifest(p) == full
     p.write_text(json.dumps({k: v for k, v in full.items() if k != "caudal_commit"}))
     assert contract.read_manifest(p) is None and "missing caudal_commit" in capsys.readouterr().err
+
+
+HOURLY = "time,lead,q05,q50,q95\n2026-11-18T07:00Z,1,900,1000,1100\n2026-11-18T08:00Z,2,950,1050,1200\n2026-11-18T09:00Z,3,1000,1100,1300\n"
+
+
+def test_hourly_forecast_holds_the_contract(tmp_path):
+    assert contract.check_forecast(write(tmp_path, HOURLY, "2026-11-18T06Z.csv")) == []
+    assert (
+        "header"
+        in contract.check_forecast(write(tmp_path, HOURLY.replace("time,lead", "date,lead"), "2026-11-18T06Z.csv"))[0]
+    )
+    assert (
+        "header" in contract.check_forecast(write(tmp_path, GOOD.replace("date,lead", "time,lead")))[0]
+    )  # a daily name
+
+
+def test_hourly_forecast_with_a_wrong_time_or_a_missing_lead_is_refused(tmp_path):
+    late = contract.check_forecast(write(tmp_path, HOURLY, "2026-11-18T05Z.csv"))
+    assert late[0] == "row 1: 2026-11-18T07:00Z is not the issue hour 2026-11-18T05Z plus 1 hours" and len(late) == 3
+    skipped = contract.check_forecast(
+        write(tmp_path, HOURLY.replace("2026-11-18T08:00Z,2", "2026-11-18T09:00Z,3"), "2026-11-18T06Z.csv")
+    )
+    assert skipped[0] == "row 2 has lead 3: leads run 1, 2, ... with none missing"
+    assert (
+        "does not parse"
+        in contract.check_forecast(write(tmp_path, HOURLY.replace("T07:00Z", " 07:00"), "2026-11-18T06Z.csv"))[0]
+    )

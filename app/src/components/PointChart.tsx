@@ -14,6 +14,8 @@ export const rgba = (hex: string, a: number) => {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
 }
 const noon = (iso: string) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10), 12) / 1000
+/** Where site.py's time goes on the axis: a day at its noon, an hour (a longer string) at that hour. */
+const when = (s: string) => (s.length > 10 ? Date.parse(s) / 1000 : noon(s))
 
 const HOUR = 1800, DAY = 43200  // how far, in seconds, a click may be from an hourly value and from a daily one
 
@@ -53,7 +55,7 @@ export function PointChart({ point, log, view = 'flow', height = 300, since }: {
     if (!stage) {
       point.obs.forEach(([d]) => xs.add(noon(d)))
       point.hefs?.dates.forEach((d) => xs.add(noon(d)))
-      Object.values(point.models).forEach((m) => m.dates.forEach((d) => xs.add(noon(d))))
+      Object.values(point.models).forEach((m) => m.dates.forEach((d) => xs.add(when(d))))
     }
     point.official?.times.forEach((t) => xs.add(hour(t)))
     point.live?.times.forEach((t) => xs.add(hour(t)))
@@ -79,13 +81,13 @@ export function PointChart({ point, log, view = 'flow', height = 300, since }: {
     const edge: uPlot.Series = { stroke: 'transparent', width: 0, spanGaps: true, points: { show: false } }
     const addFan = (label: string, colour: string, dates: string[], qs: number[][]) => {
       const arrs = qs.map(() => col())   // p05, p95, p25, p75, p50
-      dates.forEach((d, k) => qs.forEach((q, j) => put(arrs[j], noon(d), q[k])))
+      dates.forEach((d, k) => qs.forEach((q, j) => put(arrs[j], when(d), q[k])))
       const base = data.length
       data.push(...arrs)
       series.push({ ...edge, label: `${label} 5%` }, { ...edge, label: `${label} 95%` }, { ...edge, label: `${label} 25%` },
         { ...edge, label: `${label} 75%` }, { label: `${label} median`, stroke: colour, width: 2, spanGaps: true, points: { show: false } })
       bands.push({ series: [base + 1, base], fill: rgba(colour, 0.14) }, { series: [base + 3, base + 2], fill: rgba(colour, 0.22) })
-      read(base + 4, `${label} median`, colour, DAY)
+      read(base + 4, `${label} median`, colour, dates[0]?.length > 10 ? HOUR : DAY)
     }
     const dashed: Partial<uPlot.Series> = { width: 1.5, dash: [5, 4] }
     if (stage) {

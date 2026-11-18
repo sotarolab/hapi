@@ -52,6 +52,9 @@ def test_score_one_forecast_day(tmp_path):
     d = tmp_path / "forecasts" / "embalse_v1" / "FOLC1"
     d.mkdir(parents=True)
     (d / "2026-11-14.csv").write_text("date,lead,q05,q50,q95\n2026-11-15,1,900,1000,1100\n2026-11-16,2,500,600,700\n")
+    hourly = tmp_path / "forecasts" / "flow_hourly" / "FOLC1" / "2026-11-14T06Z.csv"  # drawn, not scored
+    hourly.parent.mkdir(parents=True)
+    hourly.write_text("time,lead,q50\n2026-11-14T07:00Z,1,900\n")
     rows = score.score(tmp_path)
     assert [(r["product"], r["lead"]) for r in rows] == [
         ("hefs", 1),
