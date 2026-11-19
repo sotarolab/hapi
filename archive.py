@@ -1,5 +1,5 @@
-"""Archive the official forecasts as they are issued: CNRFC HEFS ensembles and the NWS official stage/flow
-forecast. CNRFC also keeps the 12Z HEFS issues since January 2014 as dated zips, which retro.py reads for a
+"""Archive the official forecasts as they are issued: CNRFC HEFS ensembles, the NWS official stage/flow
+forecast, and the National Water Model's short-range and medium-range forecasts at the flood gauges. CNRFC also keeps the 12Z HEFS issues since January 2014 as dated zips, which retro.py reads for a
 hindcast. Whether the NWS official forecast can be fetched later was not checked, so it is saved here.
 Observations (USGS, CDEC) can be fetched later, so they are not here.
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import gzip
 import http.client
+import json
 import sys
 import urllib.request
 from datetime import UTC, datetime
@@ -30,6 +31,15 @@ FLOOD = ["HOPC1", "HEAC1", "GUEC1", "NVRC1", "FTSC1", "SCOC1", "LEGC1", "BRGC1",
 
 HEFS = "https://www.cnrfc.noaa.gov/csv/{lid}_hefs_csv_{step}.csv"
 NWPS = "https://api.water.noaa.gov/nwps/v1/gauges/{lid}/stageflow/forecast"
+# The National Water Model at each flood gauge's river reach (its `reachId` in the NWS gauge record), one
+# series per request: short range is hourly for 18 hours; medium range holds the mean and the members for 10 days.
+NWM = "https://api.water.noaa.gov/nwps/v1/reaches/{reach}/streamflow?series={series}"
+# fmt: off
+NWM_REACH = {
+    "HOPC1": 8269119, "HEAC1": 8272379, "GUEC1": 8273703, "NVRC1": 2665613, "FTSC1": 2706571, "SCOC1": 2704735,
+    "LEGC1": 8287256, "BRGC1": 2705477, "ARCC1": 8316811, "ORIC1": 8315607, "FTDC1": 22227058, "MHBC1": 20192498,
+}
+# fmt: on
 
 
 def sources() -> list[tuple[str, str, str]]:
@@ -37,6 +47,11 @@ def sources() -> list[tuple[str, str, str]]:
     out = [(lid, "hefs_daily", HEFS.format(lid=lid, step="daily")) for lid in [*INFLOW, *FLOOD]]
     out += [(lid, "hefs_hourly", HEFS.format(lid=lid, step="hourly")) for lid in FLOOD]
     out += [(lid, "nwps_forecast", NWPS.format(lid=lid)) for lid in FLOOD]
+    out += [
+        (lid, f"nwm_{series}", NWM.format(reach=NWM_REACH[lid], series=series))
+        for series in ("short_range", "medium_range")
+        for lid in FLOOD
+    ]
     return out
 
 
@@ -62,6 +77,14 @@ def save(out: Path, lid: str, product: str, body: bytes, now: datetime) -> Path 
     return path
 
 
+def forecast_only(body: bytes) -> bytes:
+    """An NWM answer without its `reach` block: the reach's name, place and route, whose list of series comes back
+    in a different order on each request, so an unchanged forecast would look new every hour."""
+    d = json.loads(body)
+    d.pop("reach", None)
+    return json.dumps(d, separators=(",", ":")).encode()
+
+
 def main(out: Path) -> int:
     now = datetime.now(UTC)
     saved = failed = 0
@@ -72,6 +95,8 @@ def main(out: Path) -> int:
             failed += 1
             print(f"BAD PAYLOAD {lid} {product}", file=sys.stderr)
             continue
+        if product.startswith("nwm_"):
+            body = forecast_only(body)
         saved += save(out, lid, product, body, now) is not None
     print(f"{now:%Y-%m-%dT%H:%MZ} saved {saved} new, {failed} failed, of {len(sources())}")
     return 1 if failed > len(sources()) // 2 else 0  # fail loudly only when the source is broadly down

@@ -6,8 +6,9 @@ A public, timestamped record of river-flow and reservoir-inflow forecasts for Ca
 scored against the official forecasts.
 
 Step 1: `archive.py` saves the official products as they are issued:
-the CNRFC HEFS ensembles (17 reservoir inflow points, 12 flood gauges) and the NWS official
-forecast for the flood gauges. The workflow runs it every 6 hours and commits to the `data` branch.
+the CNRFC HEFS ensembles (17 reservoir inflow points, 12 flood gauges), the NWS official
+forecast for the flood gauges, and the National Water Model's short-range and medium-range forecasts at
+each gauge's river reach. The hourly workflow runs it and commits to the `data` branch.
 
 Step 2: `score.py` fetches observed daily reservoir inflow from CDEC (sensor 76) for the 11 points with
 clean records and scores every archived HEFS daily ensemble at leads 1-14 days: fair CRPS, 90% coverage,
