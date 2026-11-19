@@ -42,7 +42,7 @@ const alertColour = (a: Alert) => css(a.label === 'Action' || a.label === 'Minor
  *  dashed levels, the way the NWS hydrograph shows them. The chart has its own time axis: it opens at `since`
  *  (epoch seconds; the whole record without it) and runs to the end of the forecasts. A click pins a box with
  *  the lines' values at that time; a dragged range or the wheel zooms, a double-click returns. */
-export function PointChart({ point, log, view = 'flow', height = 300, since }: { point: PointData; log: boolean; view?: 'flow' | 'stage'; height?: number; since?: number }) {
+export function PointChart({ point, log, view = 'flow', height = 300, since, pastLead }: { point: PointData; log: boolean; view?: 'flow' | 'stage'; height?: number; since?: number; pastLead?: number }) {
   const el = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -50,12 +50,15 @@ export function PointChart({ point, log, view = 'flow', height = 300, since }: {
     if (!host) return
     const stage = view === 'stage'
     const logY = log && !stage
+    const past = point.past?.fans.filter((f) => f.lead === pastLead) ?? []
+    const pastLabel = point.past?.leads.find((l) => l.hours === pastLead)?.label ?? ''
     const hour = (t: string) => Date.parse(t) / 1000
     const xs = new Set<number>()
     if (!stage) {
       point.obs.forEach(([d]) => xs.add(noon(d)))
       point.hefs?.dates.forEach((d) => xs.add(noon(d)))
       Object.values(point.models).forEach((m) => m.dates.forEach((d) => xs.add(when(d))))
+      past.forEach((f) => f.times.forEach((t) => xs.add(when(t))))
     }
     point.official?.times.forEach((t) => xs.add(hour(t)))
     point.live?.times.forEach((t) => xs.add(hour(t)))
@@ -106,8 +109,13 @@ export function PointChart({ point, log, view = 'flow', height = 300, since }: {
       if (point.live) {
         const hourly = col()
         point.live.times.forEach((t, k) => put(hourly, hour(t), point.live!.cfs[k]))
-        line('Observed, hourly', rgba(css('--obs'), 0.7), hourly, { width: 1 })  // thinner and dimmer: the daily record leads
+        // At a gauge the hourly series is the record, drawn as dots; at a reservoir it is a smoothed line under the daily one.
+        const dots = point.kind === 'gauge' ? { points: { show: true, size: 4, stroke: css('--obs'), fill: css('--obs') } } : {}
+        line('Observed, hourly', rgba(css('--obs'), 0.7), hourly, { width: 1, ...dots })
       }
+      const names = Object.keys(point.models)
+      past.forEach((f) => addFan(`${f.product}, ${pastLabel}`, css(f.product === 'HEFS' ? '--cool' : MODEL_VARS[Math.max(0, names.indexOf(f.product)) % MODEL_VARS.length]),
+        f.times, [f.q05, f.q95, f.q25, f.q75, f.q50]))
       if (point.hefs) addFan('HEFS', css('--cool'), point.hefs.dates, [point.hefs.p05, point.hefs.p95, point.hefs.p25, point.hefs.p75, point.hefs.p50])
       Object.entries(point.models).forEach(([name, m], i) =>
         addFan(name, css(MODEL_VARS[i % MODEL_VARS.length]), m.dates, [m.q05, m.q95, m.q25, m.q75, m.q50]))
@@ -167,7 +175,7 @@ export function PointChart({ point, log, view = 'flow', height = 300, since }: {
     const ro = new ResizeObserver(() => u.setSize({ width: host.clientWidth, height }))
     ro.observe(host)
     return () => { ro.disconnect(); u.destroy() }
-  }, [point, log, view, height, since])
+  }, [point, log, view, height, since, pastLead])
 
   return <div className="chart" ref={el} />
 }

@@ -25,6 +25,12 @@ MIN_PAIRS = 20  # a scorecard cell with fewer forecast-days is shown but flagged
 OBS_DAYS = 120
 WEATHER_PAST_DAYS = 7
 IVT_PAST_HOURS = 48
+STALE_HOURS = 48  # a model whose newest issue is older than this has stopped issuing and is not drawn
+# The past forecasts drawn over a gauge's observed hours: at each hour, the newest forecast made at least this
+# many hours before it. The page offers the leads as a switch, the first one shown.
+TRACE_LEADS = [(1, "1 h ahead"), (6, "6 h ahead"), (24, "24 h ahead")]
+TRACE_HOURS = 7 * 24
+QUANTILES = ["q05", "q25", "q50", "q75", "q95"]
 # The colour steps of the IVT map: the peak-IVT thresholds of the AR scale (ar_scale.py), from the floor of AR
 # conditions up. Below the first step the map shows nothing.
 IVT_STEPS = [(250, "#3f73d8"), (500, "#35b3a0"), (750, "#f1c642"), (1000, "#f08a3c"), (1250, "#e2457c")]
@@ -63,12 +69,18 @@ def hefs_latest(out: Path, lid: str) -> dict | None:
     }
 
 
-def models_latest(out: Path, lid: str) -> dict:
+def issued_at(p: Path) -> datetime:
+    """The issue time of a model forecast file, from its name: a day (at 00Z) or an hour."""
+    return datetime.strptime(p.stem, "%Y-%m-%dT%HZ" if "T" in p.stem else "%Y-%m-%d").replace(tzinfo=UTC)
+
+
+def models_latest(out: Path, lid: str, now: datetime) -> dict:
+    """The newest forecast of each model that still issues: one whose newest issue is under STALE_HOURS old."""
     models = {}
     for d in sorted((out / "forecasts").glob("*")) if (out / "forecasts").is_dir() else []:
         files = sorted((d / lid).glob("*.csv")) if (d / lid).is_dir() else []
         p = next((f for f in reversed(files) if not check_forecast(f)), None)  # the newest that holds the contract
-        if p is None:
+        if p is None or now - issued_at(p) > timedelta(hours=STALE_HOURS):
             continue
         with p.open() as f:
             rows = list(csv.DictReader(f))
@@ -81,6 +93,60 @@ def models_latest(out: Path, lid: str) -> dict:
             "manifest": read_manifest(d / "MODEL.json"),
         }
     return models
+
+
+def past_forecasts(out: Path, lid: str, now: datetime) -> dict | None:
+    """What each product said about the hours already past, for a gauge: at each of the last TRACE_HOURS hours,
+    and for each lead of TRACE_LEADS, the 5 to 95% quantiles of the newest forecast made at least that many
+    hours before the hour. HEFS counts from the time hapi archived it, which is when it was known to be out;
+    a model from its issue hour. None when no product has a past hour."""
+    start = now - timedelta(hours=TRACE_HOURS)
+    fans: dict[str, dict[int, dict[datetime, list[float]]]] = {}
+
+    def keep(product: str, known: datetime, rows: list[tuple[datetime, list[float]]]):
+        for lead, _ in TRACE_LEADS:
+            for t, qs in rows:
+                if start <= t <= now and t - known >= timedelta(hours=lead):
+                    fans.setdefault(product, {}).setdefault(lead, {})[t] = qs  # files come oldest first: newest wins
+
+    for p in sorted((out / "hefs_hourly" / lid).glob("*.gz")) if (out / "hefs_hourly" / lid).is_dir() else []:
+        known = datetime.strptime(p.stem, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+        rows = []
+        for line in gzip.decompress(p.read_bytes()).decode().splitlines()[2:]:
+            f = line.split(",")
+            t = datetime.strptime(f[0], "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+            members = [float(x) * 1000 for x in f[1:] if x and float(x) != -999]  # kcfs -> cfs; -999 is missing
+            if members and start <= t <= now and t - known >= timedelta(hours=TRACE_LEADS[0][0]):
+                rows.append((t, percentiles(members)))
+        keep("HEFS", known, rows)
+    for d in sorted((out / "forecasts").glob("*")) if (out / "forecasts").is_dir() else []:
+        for p in sorted((d / lid).glob("*T*Z.csv")) if (d / lid).is_dir() else []:  # hourly products only
+            if check_forecast(p):
+                continue
+            with p.open() as f:
+                rows = [
+                    (
+                        datetime.strptime(r["time"], "%Y-%m-%dT%H:%MZ").replace(tzinfo=UTC),
+                        [float(r[q]) for q in QUANTILES],
+                    )
+                    for r in csv.DictReader(f)
+                ]
+            keep(d.name, issued_at(p), rows)
+    if not fans:
+        return None
+    return {
+        "leads": [{"hours": h, "label": label} for h, label in TRACE_LEADS],
+        "fans": [
+            {
+                "product": product,
+                "lead": lead,
+                "times": [f"{t:%Y-%m-%dT%H:%MZ}" for t in sorted(series)],
+                **{q: [round(series[t][k]) for t in sorted(series)] for k, q in enumerate(QUANTILES)},
+            }
+            for product, by_lead in fans.items()
+            for lead, series in sorted(by_lead.items())
+        ],
+    }
 
 
 def official_latest(out: Path, lid: str) -> dict | None:
@@ -375,7 +441,7 @@ def build(out: Path, now: datetime) -> dict:
                     **point,
                     "obs": [[d.isoformat(), v] for d, v in obs],
                     "hefs": hefs_latest(out, lid),
-                    "models": models_latest(out, lid),
+                    "models": models_latest(out, lid, now),
                     "official": None,
                     "weather": weather_latest(out, lid),
                     "live": live_latest(out, lid),
@@ -404,11 +470,12 @@ def build(out: Path, now: datetime) -> dict:
                     **point,
                     "obs": [],
                     "hefs": hefs_latest(out, lid),
-                    "models": models_latest(out, lid),
+                    "models": models_latest(out, lid, now),
                     "official": official_latest(out, lid),
                     "weather": weather_latest(out, lid),
                     "live": {k: v for k, v in live.items() if k != "alerts"} or None,
                     "alerts": live.get("alerts", []),
+                    "past": past_forecasts(out, lid, now),
                 }
             )
         )

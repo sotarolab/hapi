@@ -66,6 +66,42 @@ def test_ivt_file_stitches_past_analyses_and_the_newest_forecast(tmp_path):
     assert [s["from"] for s in f["legend"]] == [250, 500, 750, 1000, 1250] and (f["nx"], f["north"]) == (2, 39)
 
 
+def test_past_forecasts_are_the_newest_made_at_least_the_lead_before(tmp_path):
+    d = tmp_path / "forecasts" / "flow_hourly" / "GUEC1"
+    d.mkdir(parents=True)
+    head = "time,lead,q05,q25,q50,q75,q95\n"
+    row = lambda t, lead, v: f"2026-11-18T{t:02d}:00Z,{lead},{v},{v},{v},{v},{v}\n"
+    (d / "2026-11-18T04Z.csv").write_text(head + "".join(row(4 + k, k, 100 + k) for k in range(1, 4)))
+    (d / "2026-11-18T05Z.csv").write_text(head + "".join(row(5 + k, k, 200 + k) for k in range(1, 4)))
+    hefs = tmp_path / "hefs_hourly" / "GUEC1"
+    hefs.mkdir(parents=True)
+    rows = "".join(f"2026-11-18 {h:02d}:00:00,0.5,-999,1.0,1.5\n" for h in range(3, 9))  # kcfs, a missing member
+    (hefs / "20261118T034000Z.gz").write_bytes(
+        gzip.compress(("GMT,GUEC1,GUEC1,GUEC1,GUEC1\n,QINE,QINE,QINE,QINE\n" + rows).encode())
+    )
+    past = site.past_forecasts(tmp_path, "GUEC1", datetime(2026, 11, 18, 7, tzinfo=UTC))
+    fans = {(f["product"], f["lead"]): f for f in past["fans"]}
+    one = fans[("flow_hourly", 1)]
+    # 06Z: the 05Z issue at lead 1 beats the 04Z one at lead 2; 07Z: only the 05Z issue at lead 2 is left, none at lead 1
+    assert one["times"] == ["2026-11-18T05:00Z", "2026-11-18T06:00Z", "2026-11-18T07:00Z"] and one["q50"] == [
+        101,
+        201,
+        202,
+    ]
+    assert ("flow_hourly", 24) not in fans and [x["hours"] for x in past["leads"]] == [1, 6, 24]
+    h = fans[("HEFS", 1)]  # archived at 03:40, so its first hour a lead of 1 h reaches is 05Z; nothing after now
+    assert h["times"] == ["2026-11-18T05:00Z", "2026-11-18T06:00Z", "2026-11-18T07:00Z"] and h["q50"] == [1000] * 3
+    assert site.past_forecasts(tmp_path, "HOPC1", datetime(2026, 11, 18, 7, tzinfo=UTC)) is None
+
+
+def test_a_model_that_stopped_issuing_is_not_drawn(tmp_path):
+    d = tmp_path / "forecasts" / "old_model" / "FOLC1"
+    d.mkdir(parents=True)
+    (d / "2026-11-15.csv").write_text("date,lead,q05,q50,q95\n2026-11-16,1,1,2,3\n")
+    assert list(site.models_latest(tmp_path, "FOLC1", datetime(2026, 11, 16, tzinfo=UTC))) == ["old_model"]
+    assert site.models_latest(tmp_path, "FOLC1", datetime(2026, 11, 18, tzinfo=UTC)) == {}
+
+
 def test_weather_panel_is_built_from_the_issue_hour(tmp_path):
     hours = [f"2026-11-{16 + h // 24:02d}T{h % 24:02d}:00" for h in range(96)]
     ivt = [100] * 12 + [600] * 30 + [100] * 54  # 30 h at tier 2: CAT 2, starting at hour 12
