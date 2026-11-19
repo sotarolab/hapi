@@ -36,6 +36,10 @@ export interface WeatherChart {
   line?: { value: number; label: string }
 }
 export interface Weather { issued: string; times: string[]; tiles: WeatherTile[]; charts: WeatherChart[]; note: string }
+/** What one product said about the hours already past, at one lead: at each hour, the newest forecast made at
+ *  least `lead` hours before it (site.py, past_forecasts). */
+export interface PastFan { product: string; lead: number; times: string[]; q05: number[]; q25: number[]; q50: number[]; q75: number[]; q95: number[] }
+export interface Past { leads: { hours: number; label: string }[]; fans: PastFan[] }
 export interface PointData extends Point {
   obs: [string, number][]
   hefs: Fan | null
@@ -45,6 +49,8 @@ export interface PointData extends Point {
   weather?: Weather | null
   live?: Live | null
   alerts?: Alert[]
+  /** Gauges only; absent in files built before site.py wrote it. */
+  past?: Past | null
 }
 export interface Cell {
   product: string

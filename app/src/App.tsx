@@ -91,6 +91,7 @@ function PointDetail({ point, stage: wantStage, onStage }: { point: PointData; s
   const [log, setLog] = useState(true)
   const [back, setBack] = useState(BACK[0].days)
   const [opened, setOpened] = useState(0)  // counts presses of a look-back button: each reopens the flow chart, undoing a zoom
+  const [pastLead, setPastLead] = useState<number | null>(null)
   const [panels, setPanels] = useState(readPanels)
   const toggle = (id: string) => setPanels((prev) => {
     const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -101,6 +102,8 @@ function PointDetail({ point, stage: wantStage, onStage }: { point: PointData; s
   const shown = charts.filter((c) => panels.includes(c.id))
   const since = back ? Math.floor(Date.now() / 3_600_000) * 3600 - back * 86400 : undefined
   const models = Object.entries(point.models)
+  const past = point.past ?? null
+  const lead = pastLead ?? past?.leads[0]?.hours
   const last = point.obs.at(-1)
   const alerts = point.alerts ?? []
   const hasStage = point.kind === 'gauge' && (point.live?.stage_ft?.some((v) => v != null) ?? false)
@@ -121,6 +124,7 @@ function PointDetail({ point, stage: wantStage, onStage }: { point: PointData; s
         </div>
         <div className="row">
           {hasStage && <div className="seg"><button className={!stage ? 'on' : ''} onClick={() => onStage(false)}>flow</button><button className={stage ? 'on' : ''} onClick={() => onStage(true)}>stage</button></div>}
+          {!stage && past && <div className="seg" title="Past forecasts drawn over the observed hours">{past.leads.map((l) => <button key={l.hours} className={l.hours === lead ? 'on' : ''} onClick={() => setPastLead(l.hours)}>{l.label}</button>)}</div>}
           {!stage && <div className="seg"><button className={log ? 'on' : ''} onClick={() => setLog(true)}>log</button><button className={!log ? 'on' : ''} onClick={() => setLog(false)}>linear</button></div>}
         </div>
       </div>
@@ -146,12 +150,13 @@ function PointDetail({ point, stage: wantStage, onStage }: { point: PointData; s
             <span><i style={{ background: 'var(--obs)' }} />{stage ? 'Observed stage, hourly' : `Observed${point.live ? ', daily and hourly' : ''}`}</span>
             {!stage && point.hefs && <span><i className="band" style={{ background: 'var(--cool)' }} />HEFS 5-95% / 25-75%, median</span>}
             {!stage && models.map(([name], i) => <span key={name}><i className="band" style={{ background: `var(${MODEL_VARS[i % MODEL_VARS.length]})` }} />{name} 5-95% / 25-75%, median</span>)}
+            {!stage && past && <span>Before now: what each forecast said {past.leads.find((l) => l.hours === lead)?.label ?? ''}, over the observed hours</span>}
             {point.official && <span><i style={{ background: 'var(--official)' }} />NWS official (hourly)</span>}
             {alerts.length > 0 && <span><i style={{ background: 'var(--warn)' }} />NWS flood categories: {alerts.map((a) => `${a.label.toLowerCase()} ${a.ft} ft`).join(', ')}{stage ? '' : ' (drawn in the stage view)'}</span>}
             <span><i style={{ background: 'var(--hot)' }} />now</span>
           </div>
         </div>
-        <PointChart key={opened} point={point} log={log} view={stage ? 'stage' : 'flow'} since={since} />
+        <PointChart key={opened} point={point} log={log} view={stage ? 'stage' : 'flow'} since={since} pastLead={lead} />
         {shown.map((c) => (
           <div key={c.id}>
             <div className="panel-t"><span className="eyebrow">{c.label}, {c.unit}</span><WeatherLegend chart={c} /></div>
