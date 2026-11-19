@@ -1,0 +1,117 @@
+{
+  "reach": {
+    "reachId": "8273703",
+    "name": "Russian River",
+    "latitude": 38.4993,
+    "longitude": -122.999,
+    "streamflow": [
+      "analysis_assimilation",
+      "short_range",
+      "long_range",
+      "medium_range_blend",
+      "medium_range"
+    ],
+    "route": {
+      "upstream": [
+        {
+          "reachId": "8273667",
+          "streamOrder": "5"
+        },
+        {
+          "reachId": "8273705",
+          "streamOrder": "5"
+        }
+      ],
+      "downstream": [
+        {
+          "reachId": "8272963",
+          "streamOrder": "5"
+        }
+      ]
+    }
+  },
+  "analysisAssimilation": {},
+  "shortRange": {
+    "series": {
+      "referenceTime": "2026-11-18T23:00:00Z",
+      "units": "ft³/s",
+      "data": [
+        {
+          "validTime": "2026-11-19T00:00:00Z",
+          "flow": 324.19000244140625
+        },
+        {
+          "validTime": "2026-11-19T01:00:00Z",
+          "flow": 335.8399963378906
+        },
+        {
+          "validTime": "2026-11-19T02:00:00Z",
+          "flow": 356.3199768066406
+        },
+        {
+          "validTime": "2026-11-19T03:00:00Z",
+          "flow": 387.7599792480469
+        },
+        {
+          "validTime": "2026-11-19T04:00:00Z",
+          "flow": 431.54998779296875
+        },
+        {
+          "validTime": "2026-11-19T05:00:00Z",
+          "flow": 484.8699951171875
+        },
+        {
+          "validTime": "2026-11-19T06:00:00Z",
+          "flow": 542.0800170898438
+        },
+        {
+          "validTime": "2026-11-19T07:00:00Z",
+          "flow": 605.6499633789062
+        },
+        {
+          "validTime": "2026-11-19T08:00:00Z",
+          "flow": 672.0399780273438
+        },
+        {
+          "validTime": "2026-11-19T09:00:00Z",
+          "flow": 736.6599731445312
+        },
+        {
+          "validTime": "2026-11-19T10:00:00Z",
+          "flow": 795.6399536132812
+        },
+        {
+          "validTime": "2026-11-19T11:00:00Z",
+          "flow": 840.8399658203125
+        },
+        {
+          "validTime": "2026-11-19T12:00:00Z",
+          "flow": 877.5700073242188
+        },
+        {
+          "validTime": "2026-11-19T13:00:00Z",
+          "flow": 909
+        },
+        {
+          "validTime": "2026-11-19T14:00:00Z",
+          "flow": 935.1300048828125
+        },
+        {
+          "validTime": "2026-11-19T15:00:00Z",
+          "flow": 956.3200073242188
+        },
+        {
+          "validTime": "2026-11-19T16:00:00Z",
+          "flow": 973.2699584960938
+        },
+        {
+          "validTime": "2026-11-19T17:00:00Z",
+          "flow": 987.0399780273438
+        }
+      ]
+    }
+  },
+  "mediumRange": {},
+  "longRange": {},
+  "mediumRangeBlend": {}
+}

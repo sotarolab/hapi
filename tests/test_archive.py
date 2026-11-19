@@ -1,4 +1,5 @@
 import gzip
+import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,4 +20,21 @@ def test_save_skips_unchanged_and_keeps_changed(tmp_path):
 
 def test_sources_cover_every_point_once_per_product():
     s = archive.sources()
-    assert len(s) == len(set(s)) == len(archive.INFLOW) + 3 * len(archive.FLOOD)
+    assert len(s) == len(set(s)) == len(archive.INFLOW) + 5 * len(archive.FLOOD)
+
+
+def test_every_flood_gauge_has_its_nwm_reach_and_a_real_answer_is_a_json_payload():
+    assert set(archive.NWM_REACH) == set(archive.FLOOD)
+    nwm = [(lid, url) for lid, product, url in archive.sources() if product.startswith("nwm_")]
+    assert len(nwm) == 2 * len(archive.FLOOD) and all("series=" in url for _, url in nwm)
+    body = (Path(__file__).parent / "fixtures" / "nwm_short_range_8273703.json").read_bytes()  # NWPS, 2026-11-19
+    assert body[:1] == b"{" and b'"shortRange"' in body  # the check main() applies to every JSON product
+
+
+def test_an_nwm_answer_is_saved_without_its_reach_block():
+    body = (Path(__file__).parent / "fixtures" / "nwm_short_range_8273703.json").read_bytes()
+    d = json.loads(body)
+    d["reach"]["streamflow"] = list(reversed(d["reach"]["streamflow"]))  # what the API does between two requests
+    kept = archive.forecast_only(body)
+    assert kept == archive.forecast_only(json.dumps(d).encode())  # so an unchanged forecast saves nothing
+    assert "reach" not in json.loads(kept) and json.loads(kept)["shortRange"] == json.loads(body)["shortRange"]

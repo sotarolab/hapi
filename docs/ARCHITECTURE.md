@@ -95,6 +95,7 @@ flowchart TB
 |---|---|---|
 | `hefs_daily/`, `hefs_hourly/` | `archive.py` | HEFS ensembles as fetched, one gzip per point and issue |
 | `nwps_forecast/` | `archive.py` | The NWS official stage and flow forecast for the gauges |
+| `nwm_short_range/`, `nwm_medium_range/` | `archive.py` | The National Water Model at each gauge's river reach: 18 hours hourly, and 10 days with its members |
 | `weather/` | `weather.py` | One derived file per point and fetch: hourly series per model, IVT |
 | `ivt_gfs/` | `ivt_field.py` | The GFS IVT field over the northeast Pacific, two components, one file per forecast cycle |
 | `cdec_inflow/` | `score.py` | Observed daily inflow, full record, refetched every run (CDEC revises) |
