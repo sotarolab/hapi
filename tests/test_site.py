@@ -102,6 +102,16 @@ def test_a_model_that_stopped_issuing_is_not_drawn(tmp_path):
     assert site.models_latest(tmp_path, "FOLC1", datetime(2026, 11, 18, tzinfo=UTC)) == {}
 
 
+def test_an_hourly_model_not_issued_for_six_hours_is_not_drawn(tmp_path):
+    d = tmp_path / "forecasts" / "old_hourly" / "GUEC1"
+    d.mkdir(parents=True)
+    (d / "2026-11-18T04Z.csv").write_text("time,lead,q05,q25,q50,q75,q95\n2026-11-18T05:00Z,1,1,2,3,4,5\n")
+    soon, later = datetime(2026, 11, 18, 9, tzinfo=UTC), datetime(2026, 11, 18, 11, tzinfo=UTC)
+    assert list(site.models_latest(tmp_path, "GUEC1", soon)) == ["old_hourly"]
+    assert site.models_latest(tmp_path, "GUEC1", later) == {}
+    assert site.past_forecasts(tmp_path, "GUEC1", later) is None  # nor in the past-forecast view
+
+
 def test_weather_panel_is_built_from_the_issue_hour(tmp_path):
     hours = [f"2026-11-{16 + h // 24:02d}T{h % 24:02d}:00" for h in range(96)]
     ivt = [100] * 12 + [600] * 30 + [100] * 54  # 30 h at tier 2: CAT 2, starting at hour 12

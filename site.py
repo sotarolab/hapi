@@ -25,7 +25,10 @@ MIN_PAIRS = 20  # a scorecard cell with fewer forecast-days is shown but flagged
 OBS_DAYS = 120
 WEATHER_PAST_DAYS = 7
 IVT_PAST_HOURS = 48
-STALE_HOURS = 48  # a model whose newest issue is older than this has stopped issuing and is not drawn
+# A model whose newest issue is older than this has stopped issuing and is not drawn: two days for a daily
+# product, six hours for one that issues every hour.
+STALE_HOURS = 48
+STALE_HOURS_HOURLY = 6
 # The past forecasts drawn over a gauge's observed hours: at each hour, the newest forecast made at least this
 # many hours before it. The page offers the leads as a switch, the first one shown.
 TRACE_LEADS = [(1, "1 h ahead"), (6, "6 h ahead"), (24, "24 h ahead")]
@@ -74,13 +77,18 @@ def issued_at(p: Path) -> datetime:
     return datetime.strptime(p.stem, "%Y-%m-%dT%HZ" if "T" in p.stem else "%Y-%m-%d").replace(tzinfo=UTC)
 
 
+def stale(p: Path, now: datetime) -> bool:
+    """Whether the newest file of a product, `p`, is too old to draw."""
+    return now - issued_at(p) > timedelta(hours=STALE_HOURS_HOURLY if "T" in p.stem else STALE_HOURS)
+
+
 def models_latest(out: Path, lid: str, now: datetime) -> dict:
     """The newest forecast of each model that still issues: one whose newest issue is under STALE_HOURS old."""
     models = {}
     for d in sorted((out / "forecasts").glob("*")) if (out / "forecasts").is_dir() else []:
         files = sorted((d / lid).glob("*.csv")) if (d / lid).is_dir() else []
         p = next((f for f in reversed(files) if not check_forecast(f)), None)  # the newest that holds the contract
-        if p is None or now - issued_at(p) > timedelta(hours=STALE_HOURS):
+        if p is None or stale(p, now):
             continue
         with p.open() as f:
             rows = list(csv.DictReader(f))
@@ -120,7 +128,10 @@ def past_forecasts(out: Path, lid: str, now: datetime) -> dict | None:
                 rows.append((t, percentiles(members)))
         keep("HEFS", known, rows)
     for d in sorted((out / "forecasts").glob("*")) if (out / "forecasts").is_dir() else []:
-        for p in sorted((d / lid).glob("*T*Z.csv")) if (d / lid).is_dir() else []:  # hourly products only
+        files = sorted((d / lid).glob("*T*Z.csv")) if (d / lid).is_dir() else []  # hourly products only
+        if not files or stale(files[-1], now):  # a product no longer issued is not drawn, past or future
+            continue
+        for p in files:
             if check_forecast(p):
                 continue
             with p.open() as f:
